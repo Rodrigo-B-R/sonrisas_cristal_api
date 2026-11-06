@@ -1,0 +1,18 @@
+# Prende la API en Docker. La base de datos se prende aparte con el repo sonrisas_cristal_db.
+#   docker compose up -d --build
+# Toma las variables de .env. Si la base está en Docker en tu misma compu,
+# en DATABASE_URL usa host.docker.internal en lugar de localhost.
+services:
+  api:
+    build: .
+    image: sonrisas-cristal-api
+    container_name: sonrisas_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 3000
+    ports:
+      - "${API_PORT:-3000}:3000"
+    extra_hosts:
+      # Para que host.docker.internal también funcione en Linux
+      - "host.docker.internal:host-gateway"
