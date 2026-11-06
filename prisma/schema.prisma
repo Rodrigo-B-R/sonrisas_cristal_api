@@ -1,0 +1,247 @@
+// Modelos de Prisma para las tablas del repo sonrisas_cristal_db (init/01-init.sql).
+// Las tablas NO las crea Prisma: las crea ese script (npm run db:crear).
+// Aquí solo se describen para poder consultarlas desde la API.
+//
+// En JavaScript los nombres van en camelCase; @map / @@map dicen cómo se llaman en Postgres.
+// Los id son BIGINT en Postgres; aquí van como Int para que viajen como número normal en el JSON.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Catálogos ────────────────────────────────────────────────────────
+
+// empleada | responsable | direccion
+model Rol {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @db.VarChar(255)
+  usuarios Usuario[]
+
+  @@map("rol")
+}
+
+// Maestra titular, Asistente, Auxiliar, Cocina...
+model Puesto {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @db.VarChar(255)
+  usuarios Usuario[]
+
+  @@map("puesto")
+}
+
+// Renuncia, Fin de contrato, Otro...
+model CausaBaja {
+  id          Int                 @id @default(autoincrement())
+  nombre      String              @db.VarChar(255)
+  movimientos MovimientoUsuario[]
+
+  @@map("causa_baja")
+}
+
+// matutino 07:00-15:00, vespertino 12:00-20:00
+model Turno {
+  id          Int               @id @default(autoincrement())
+  nombre      String            @db.VarChar(255)
+  horaEntrada DateTime          @map("hora_entrada") @db.Time(0)
+  horaSalida  DateTime          @map("hora_salida") @db.Time(0)
+  diasHorario HorarioDia[]
+  registros   RegistroEntrada[]
+
+  @@map("turno")
+}
+
+// Dónde está la estancia: el círculo de "Estás en la estancia" (precision = radio en metros)
+model Ubicacion {
+  id        Int               @id @default(autoincrement())
+  nombre    String            @db.VarChar(255)
+  latitud   Float
+  longitud  Float
+  precision Int
+  estancias Estancia[]
+  registros RegistroEntrada[]
+
+  @@map("ubicacion")
+}
+
+// ── Estancias y salas ────────────────────────────────────────────────
+
+model Estancia {
+  id                 Int                 @id @default(autoincrement())
+  nombre             String              @db.VarChar(255)
+  ubicacionId        Int                 @map("id_ubicacion")
+  ubicacion          Ubicacion           @relation(fields: [ubicacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salas              Sala[]
+  personal           Usuario[]
+  asistencias        Asistencia[]
+  movimientosOrigen  MovimientoUsuario[] @relation("estancia_origen")
+  movimientosDestino MovimientoUsuario[] @relation("estancia_destino")
+
+  @@map("estancia")
+}
+
+model Sala {
+  id             Int               @id @default(autoincrement())
+  nombre         String            @db.VarChar(255)
+  minimoPersonal Int               @map("minimo_personal")
+  estanciaId     Int               @map("id_estancia")
+  estancia       Estancia          @relation(fields: [estanciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  diasHorario    HorarioDia[]
+  registros      RegistroEntrada[]
+
+  @@map("sala")
+}
+
+// ── Usuarios ─────────────────────────────────────────────────────────
+
+model Usuario {
+  id         Int     @id @default(autoincrement())
+  nombre     String  @db.VarChar(255)
+  password   String  @map("contraseña") @db.VarChar(255) // hash de bcrypt, nunca el texto
+  clave      String  @unique(map: "usuario_clave_unica") @db.VarChar(255)
+  correo     String  @unique(map: "usuario_correo_unico") @db.VarChar(255)
+  celular    String  @db.VarChar(255)
+  estaActivo Boolean @map("esta_activo")
+  rolId      Int     @map("id_rol")
+  puestoId   Int     @map("id_puesto")
+  estanciaId Int     @map("id_estancia")
+
+  rol      Rol      @relation(fields: [rolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  puesto   Puesto   @relation(fields: [puestoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estancia Estancia @relation(fields: [estanciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  horarios          Horario[]
+  avisosEnviados    Aviso[]
+  avisosRecibidos   AvisoUsuario[]
+  registros         RegistroEntrada[]   @relation("registro_de")
+  registrosHechos   RegistroEntrada[]   @relation("registro_hecho_por")
+  asistencias       Asistencia[]        @relation("asistencia_de")
+  asistenciasHechas Asistencia[]        @relation("asistencia_hecha_por")
+  movimientos       MovimientoUsuario[] @relation("movimiento_de")
+  movimientosHechos MovimientoUsuario[] @relation("movimiento_hecho_por")
+
+  @@map("usuario")
+}
+
+// alta | baja | traslado. Es el historial de la persona.
+model MovimientoUsuario {
+  id                Int      @id @default(autoincrement())
+  tipo              String   @db.VarChar(255)
+  fecha             DateTime @db.Date
+  observaciones     String?  @db.VarChar(255)
+  usuarioId         Int      @map("id_usuario_del_movimiento")
+  hechoPorId        Int      @map("id_usuario_que_movio")
+  causaBajaId       Int?     @map("id_causa_baja") // solo bajas
+  estanciaOrigenId  Int?     @map("id_estancia_origen") // bajas y traslados
+  estanciaDestinoId Int?     @map("id_estancia_destino") // altas y traslados
+
+  usuario         Usuario    @relation("movimiento_de", fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  hechoPor        Usuario    @relation("movimiento_hecho_por", fields: [hechoPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  causaBaja       CausaBaja? @relation(fields: [causaBajaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estanciaOrigen  Estancia?  @relation("estancia_origen", fields: [estanciaOrigenId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estanciaDestino Estancia?  @relation("estancia_destino", fields: [estanciaDestinoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("movimiento_usuario")
+}
+
+// ── Avisos ───────────────────────────────────────────────────────────
+
+model Aviso {
+  id        Int            @id @default(autoincrement())
+  asunto    String         @db.VarChar(255)
+  tipoAviso String         @map("tipo_aviso") @db.VarChar(255)
+  mensaje   String         @db.VarChar(255)
+  autorId   Int            @map("id_usuario_envia")
+  autor     Usuario        @relation(fields: [autorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lecturas  AvisoUsuario[]
+
+  @@map("aviso")
+}
+
+// A quién le llegó cada aviso y si ya lo leyó
+model AvisoUsuario {
+  avisoId   Int       @map("id_aviso")
+  usuarioId Int       @map("id_usuario")
+  leido     Boolean   @default(false)
+  leidoEn   DateTime? @map("leido_en") @db.Timestamptz(0)
+  aviso     Aviso     @relation(fields: [avisoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([avisoId, usuarioId])
+  @@map("aviso_usuario")
+}
+
+// ── Horarios ─────────────────────────────────────────────────────────
+
+// La semana de una persona, válida de vigenteDesde a vigenteHasta
+model Horario {
+  id           Int          @id @default(autoincrement())
+  usuarioId    Int          @map("id_usuario")
+  vigenteDesde DateTime     @map("vigente_desde") @db.Date
+  vigenteHasta DateTime     @map("vigente_hasta") @db.Date
+  usuario      Usuario      @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  dias         HorarioDia[]
+
+  @@map("horario")
+}
+
+// Un día de esa semana: lunes, turno matutino, sala Maternal A
+model HorarioDia {
+  id          Int     @id @default(autoincrement())
+  diaDeSemana String  @map("dia_de_semana") @db.VarChar(255) // lunes ... domingo (sin acentos)
+  horarioId   Int     @map("id_horario")
+  turnoId     Int     @map("id_turno")
+  salaId      Int     @map("id_sala")
+  horario     Horario @relation(fields: [horarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  turno       Turno   @relation(fields: [turnoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sala        Sala    @relation(fields: [salaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([horarioId, diaDeSemana, turnoId, salaId], map: "horario_dia_unico")
+  @@map("horario_dia")
+}
+
+// ── Registros ────────────────────────────────────────────────────────
+
+// Una entrada y su salida (fechaHoraSalida es null mientras sigue dentro)
+model RegistroEntrada {
+  id               Int       @id @default(autoincrement())
+  uuid             String    @unique(map: "registro_entradas_uuid_unico") @db.Uuid // lo genera el celular: evita duplicados al reenviar sin internet
+  fechaHoraEntrada DateTime  @map("fecha_hora_entrada") @db.Timestamptz(0)
+  fechaHoraSalida  DateTime? @map("fecha_hora_salida") @db.Timestamptz(0)
+  origenRegistro   String    @map("origen_registro") @db.VarChar(255) // app | responsable
+  dentroDeZona     Boolean   @map("dentro_de_zona")
+  usuarioId        Int       @map("id_usuario_entrada")
+  registradoPorId  Int       @map("id_usuario_registro")
+  ubicacionId      Int       @map("id_ubicacion")
+  salaId           Int       @map("id_sala")
+  turnoId          Int       @map("id_turno")
+
+  usuario       Usuario   @relation("registro_de", fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  registradoPor Usuario   @relation("registro_hecho_por", fields: [registradoPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ubicacion     Ubicacion @relation(fields: [ubicacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sala          Sala      @relation(fields: [salaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  turno         Turno     @relation(fields: [turnoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("registro_entradas")
+}
+
+// Cómo le fue a la persona ese día: presente | retardo | falta | incidencia (una por día)
+model Asistencia {
+  id              Int      @id @default(autoincrement())
+  fecha           DateTime @db.Date
+  estado          String   @db.VarChar(255)
+  motivo          String?  @db.VarChar(255) // obligatorio en falta e incidencia
+  usuarioId       Int      @map("id_usuario_que_asistio")
+  registradoPorId Int      @map("id_usuario_registro")
+  estanciaId      Int      @map("id_estancia")
+
+  usuario       Usuario  @relation("asistencia_de", fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  registradoPor Usuario  @relation("asistencia_hecha_por", fields: [registradoPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estancia      Estancia @relation(fields: [estanciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([usuarioId, estanciaId, fecha], map: "asistencia_unica")
+  @@map("asistencia")
+}

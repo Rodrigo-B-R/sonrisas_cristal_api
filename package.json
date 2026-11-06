@@ -1,0 +1,28 @@
+{
+  "name": "sonrisas-cristal-api",
+  "version": "1.0.0",
+  "description": "API REST de Sonrisas de Cristal (control de personal) con Express, Prisma, PostgreSQL y JWT",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "postinstall": "prisma generate",
+    "db:crear": "node scripts/crear-tablas.js",
+    "seed": "node prisma/seed.js",
+    "db:ver": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.1",
+    "prisma": "^7.10.1"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20.19"
+  }
+}
