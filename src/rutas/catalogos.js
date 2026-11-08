@@ -1,5 +1,3 @@
-// /catalogos  ·  las listas para los menús de la app (roles, puestos, turnos, causas de baja, motivos de ausencia).
-// Cualquiera con sesión las lee. Dirección puede agregar puestos, causas de baja y motivos.
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -9,7 +7,7 @@ const router = express.Router();
 
 const porId = { orderBy: { id: 'asc' } };
 
-// GET /catalogos  ->  { roles, puestos, turnos, causasBaja, motivosAusencia }
+// GET /catalogos
 router.get('/', async (req, res) => {
   const [roles, puestos, turnos, causasBaja, motivosAusencia] = await Promise.all([
     prisma.rol.findMany(porId),

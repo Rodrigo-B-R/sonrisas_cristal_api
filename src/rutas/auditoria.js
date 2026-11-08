@@ -1,5 +1,4 @@
-// /auditoria  ·  quién cambió qué y cuándo en registros, asistencias y correcciones.
-// La tabla la llenan solos los triggers de la base; la API solo la lee.
+// /auditoria: la llenan los triggers de la base; la API solo la lee.
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -10,7 +9,6 @@ const router = express.Router();
 const TABLAS = ['registro_entradas', 'asistencia', 'correccion_registro'];
 
 // GET /auditoria  ?desde=&hasta=&tabla=&registroId=&usuarioId=   (dirección)
-//   ->  [ { id, accion, tabla, registroId, datosAnteriores, datosNuevos, creadoEn, usuario } ]
 router.get('/', permitir('direccion'), async (req, res) => {
   const periodo = leerPeriodo(req.query);
   if (periodo.error) {

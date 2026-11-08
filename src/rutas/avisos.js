@@ -1,5 +1,3 @@
-// /avisos  ·  La Responsable envía avisos y ve quién confirmó la lectura.
-// La empleada ve los suyos y confirma que los leyó (aviso_usuario.leido / leido_en).
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -18,7 +16,6 @@ function filtroAvisos(req) {
   return { autor: { estanciaId: req.usuario.estanciaId } };
 }
 
-// Cuenta confirmados para la lista de la Responsable: "9 de 14 confirmaron"
 function conConteo({ lecturas, ...aviso }) {
   return {
     ...aviso,
@@ -27,14 +24,11 @@ function conConteo({ lecturas, ...aviso }) {
   };
 }
 
-// Personas con horario vigente hoy que tenga ese turno o esa sala
 const conHorarioHoy = (dias) => ({
   horarios: { some: { vigenteDesde: { lte: aFechaDb(hoy()) }, vigenteHasta: { gte: aFechaDb(hoy()) }, dias: { some: dias } } },
 });
 
 // GET /avisos
-//   empleada              ->  los que le llegaron, con leido y leidoEn
-//   responsable/dirección ->  los de la estancia, con destinatarios y confirmaron
 router.get('/', async (req, res) => {
   if (req.usuario.rol === 'empleada') {
     const lecturas = await prisma.avisoUsuario.findMany({
@@ -53,8 +47,6 @@ router.get('/', async (req, res) => {
 });
 
 // GET /avisos/:id
-//   empleada              ->  el aviso + su leido/leidoEn
-//   responsable/dirección ->  el aviso + confirmados y pendientes ("Estado de lectura")
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   const aviso = await prisma.aviso.findUnique({
@@ -89,12 +81,7 @@ router.get('/:id', async (req, res) => {
   });
 });
 
-// POST /avisos  ->  201
-// { asunto, mensaje, tipoAviso, destino, turnoId?, salaId?, usuarioIds? }
-//   destino "todos"    -> todo el personal activo de la estancia
-//   destino "turno"    -> quien tenga ese turno en su horario vigente
-//   destino "sala"     -> quien tenga esa sala en su horario vigente
-//   destino "personas" -> los usuarioIds
+// POST /avisos  { asunto, mensaje, tipoAviso, destino: todos|turno|sala|personas, turnoId?, salaId?, usuarioIds?, requiereConfirmacion? }
 router.post('/', permitir('responsable'), async (req, res) => {
   const { asunto, mensaje, tipoAviso, destino = 'todos', turnoId, salaId, usuarioIds, requiereConfirmacion = false } =
     req.body ?? {};
@@ -146,7 +133,7 @@ router.post('/', permitir('responsable'), async (req, res) => {
       tipoAviso,
       requiereConfirmacion,
       autorId: req.usuario.id,
-      estanciaId: req.usuario.estanciaId, // el aviso es de su estancia
+      estanciaId: req.usuario.estanciaId,
       lecturas: { create: destinatarios.map((d) => ({ usuarioId: d.id })) },
     },
     include: { ...conAutor, lecturas: true },
@@ -154,7 +141,7 @@ router.post('/', permitir('responsable'), async (req, res) => {
   res.status(201).json(conConteo(aviso));
 });
 
-// POST /avisos/:id/lectura  ->  { avisoId, leido, leidoEn }   (la empleada confirma que lo leyó)
+// POST /avisos/:id/lectura
 router.post('/:id/lectura', async (req, res) => {
   const avisoId = Number(req.params.id);
   const clave = { avisoId_usuarioId: { avisoId, usuarioId: req.usuario.id } };

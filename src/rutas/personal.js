@@ -1,7 +1,4 @@
-// /personal  ·  pantallas "Personal", "Perfil", "Alta de personal" y "Dar de baja".
-// La Responsable maneja a la gente de su estancia. Dirección ve todo y además
-// puede dar de alta Responsables (de otro modo nadie podría crearlas).
-// Cada alta, baja o traslado queda en movimiento_usuario (el historial de la persona).
+// Cada alta, baja o traslado queda en movimiento_usuario.
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const prisma = require('../prisma');
@@ -20,14 +17,13 @@ const {
 
 const router = express.Router();
 
-router.use(permitir('responsable', 'direccion')); // la empleada no ve a las demás
+router.use(permitir('responsable', 'direccion'));
 
 const incluir = { rol: true, puesto: true, estancia: true };
 
 // La Responsable no ve a Dirección aunque esté registrada en su estancia
 const sinDireccion = (req) => (req.usuario.rol === 'direccion' ? {} : { rol: { nombre: { not: 'direccion' } } });
 
-// Busca a una persona, pero solo si es de la estancia de quien pregunta
 async function buscar(req, id) {
   const persona = await prisma.usuario.findUnique({
     where: { id, ...sinDireccion(req) },
@@ -45,7 +41,6 @@ const puedeModificar = (req, persona) => req.usuario.rol === 'direccion' || pers
 
 const rolPorNombre = (nombre) => prisma.rol.findFirst({ where: { nombre } });
 
-// Fecha del body o hoy. Regresa null si no es válida.
 const leerFecha = (fecha = hoy()) => (esFecha(fecha) ? fecha : null);
 
 // GET /personal  ?activo=false (bajas) | ?activo=todos  ?estanciaId= (dirección)
@@ -60,7 +55,7 @@ router.get('/', async (req, res) => {
   res.json(personal);
 });
 
-// GET /personal/:id  ->  perfil con su horario de hoy y su historial
+// GET /personal/:id
 router.get('/:id', async (req, res) => {
   const persona = await buscar(req, Number(req.params.id));
   if (!persona) {
@@ -71,9 +66,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /personal  { nombre, clave, correo, celular, puestoId, password?, fecha? }
-//   ->  201 + persona + passwordTemporal
-// Dirección además manda rol ("empleada" | "responsable" | "direccion") y estanciaId.
-// Si no mandas password se genera una temporal que la persona cambia después.
+//   Dirección además manda rol y estanciaId. Sin password se genera una temporal.
 router.post('/', async (req, res) => {
   const body = req.body ?? {};
   const { nombre, clave, correo, celular, puestoId, password } = body;
@@ -130,7 +123,6 @@ router.post('/', async (req, res) => {
     });
     return persona;
   });
-  // La temporal se muestra UNA vez para que la Responsable se la dé a la persona
   res.status(201).json({ ...nueva, passwordTemporal: temporal });
 });
 
@@ -166,7 +158,6 @@ router.put('/:id', async (req, res) => {
 });
 
 // POST /personal/:id/baja  { causaBajaId, fecha?, observaciones? }  ->  persona dada de baja
-// No se borra: sale de la plantilla activa y su historial se conserva.
 router.post('/:id/baja', async (req, res) => {
   const id = Number(req.params.id);
   const persona = await buscar(req, id);
@@ -208,7 +199,7 @@ router.post('/:id/baja', async (req, res) => {
   res.json(actualizada);
 });
 
-// POST /personal/:id/traslado  { estanciaId, fecha?, observaciones? }  ->  persona en su nueva estancia
+// POST /personal/:id/traslado  { estanciaId, fecha?, observaciones? }
 router.post('/:id/traslado', async (req, res) => {
   const id = Number(req.params.id);
   const persona = await buscar(req, id);
@@ -251,7 +242,6 @@ router.post('/:id/traslado', async (req, res) => {
 });
 
 // POST /personal/:id/password  ->  { passwordTemporal }
-// "¿Olvidaste tu contraseña? Pídela a tu Responsable."
 router.post('/:id/password', async (req, res) => {
   const id = Number(req.params.id);
   const persona = await buscar(req, id);

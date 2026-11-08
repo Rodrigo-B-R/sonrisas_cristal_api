@@ -1,6 +1,4 @@
-// Llena la base con datos de prueba: catálogos, 5 estancias con sus salas y el personal de Cumbres.
-// Las tablas ya deben existir (npm run db:crear). Se puede correr varias veces:
-// lo que ya existe no se duplica y las contraseñas vuelven a ser SEED_PASSWORD.
+// Datos de prueba. Se puede correr varias veces: no duplica y regresa las contraseñas a SEED_PASSWORD.
 require('dotenv/config');
 process.env.TZ = process.env.TZ || 'America/Monterrey';
 const bcrypt = require('bcryptjs');
@@ -54,7 +52,6 @@ async function buscarOCrear(modelo, where, data = where) {
 async function main() {
   const password = await bcrypt.hash(process.env.SEED_PASSWORD || 'Cristal2026', 10);
 
-  // Catálogos
   const rol = {};
   for (const nombre of ROLES) rol[nombre] = await buscarOCrear('rol', { nombre });
   const puesto = {};
@@ -66,7 +63,6 @@ async function main() {
     turno[nombre] = await buscarOCrear('turno', { nombre }, { nombre, horaEntrada: aHoraDb(entrada), horaSalida: aHoraDb(salida) });
   }
 
-  // Estancias con su ubicación y sus salas
   const estancias = {};
   for (const [nombre, latitud, longitud] of ESTANCIAS) {
     const estancia =
@@ -85,7 +81,6 @@ async function main() {
   }
   const cumbres = estancias['Cumbres'];
 
-  // Crea o actualiza a la persona y, la primera vez, su movimiento de alta
   let direccion = null;
   async function crearUsuario({ clave, nombre, rol: nombreRol, puesto: nombrePuesto }, numero) {
     const datos = {
@@ -115,14 +110,12 @@ async function main() {
     return usuario;
   }
 
-  // Dirección (ve todas las estancias) y la Responsable de Cumbres
   direccion = await crearUsuario({ clave: 'direccion', nombre: 'Dirección General', rol: 'direccion', puesto: 'Dirección' }, 1);
   const marisol = await crearUsuario(
     { clave: 'marisol.garcia', nombre: 'Marisol García', rol: 'responsable', puesto: 'Responsable de estancia' },
     2,
   );
 
-  // Personal de Cumbres con su horario semanal (solo se crea si aún no tiene)
   const empleadas = [];
   for (const [i, p] of PERSONAL_CUMBRES.entries()) {
     const usuario = await crearUsuario({ ...p, rol: 'empleada' }, i + 3);
@@ -146,7 +139,6 @@ async function main() {
     });
   }
 
-  // Un aviso de ejemplo para que la pestaña Avisos no salga vacía
   if ((await prisma.aviso.count()) === 0) {
     await prisma.aviso.create({
       data: {

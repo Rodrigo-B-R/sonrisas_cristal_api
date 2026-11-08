@@ -1,8 +1,4 @@
-// Reportes calculados a partir de horario, asistencia, registro_entradas y movimiento_usuario:
-//   GET /cobertura             "Inicio" de la Responsable: presentes y salas bajo el mínimo
-//   GET /resumen               "Resumen" de Dirección: estancias completas o con faltante
-//   GET /estadisticas          "Estadísticas" de Dirección
-//   GET /exportar/asistencias  CSV para "Exportar"
+// GET /cobertura, /resumen, /estadisticas y /exportar/asistencias
 const express = require('express');
 const prisma = require('../prisma');
 const { verificarToken, permitir } = require('../middleware/auth');
@@ -21,7 +17,6 @@ const router = express.Router();
 
 const turnosOrdenados = () => prisma.turno.findMany({ orderBy: { id: 'asc' } });
 
-// "desde" por defecto: el primero del mes
 function periodoDelMes(query, maxDias) {
   return leerPeriodo({ desde: `${hoy().slice(0, 8)}01`, ...query }, maxDias);
 }
@@ -44,7 +39,7 @@ router.get('/cobertura', verificarToken, permitir('responsable', 'direccion'), a
   res.json(calcularCobertura(estancia, await turnosOrdenados(), fecha, datos));
 });
 
-// GET /resumen  ?fecha=  ->  { fecha, completas, conFaltante, estancias: [...] }
+// GET /resumen  ?fecha=
 router.get('/resumen', verificarToken, permitir('direccion'), async (req, res) => {
   const fecha = req.query.fecha ?? hoy();
   if (!esFecha(fecha)) {
@@ -140,7 +135,6 @@ router.get('/exportar/asistencias', verificarToken, permitir('responsable', 'dir
   const datos = await cargarDatos(filtroEstancia(req), desde, hasta);
   const fechas = rangoDeFechas(desde, hasta);
 
-  // Comillas en cada campo para que comas o acentos no rompan el archivo
   const campo = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
   const filas = [
     ['estancia', 'nombre', 'clave', 'puesto', 'fecha', 'turno', 'sala', 'hora_programada', 'entrada', 'salida', 'estado', 'motivo', 'minutos_retardo', 'dentro_de_zona'],

@@ -1,7 +1,4 @@
-// Crea las tablas corriendo el script SQL del equipo (repo sonrisas_cristal_db).
-// Uso:  npm run db:crear                       (usa ../sonrisas_cristal_db/init/01-init.sql)
-//       npm run db:crear -- ruta/a/otro.sql    (si tu script está en otro lado)
-// Solo se corre UNA vez, con la base vacía. Si las tablas ya existen, avisa y no toca nada.
+// npm run db:crear [-- ruta.sql]: corre ../sonrisas_cristal_db/init/01-init.sql si la base está vacía.
 require('dotenv/config');
 const fs = require('fs');
 const path = require('path');

@@ -1,6 +1,4 @@
-// /registros  ·  pestaña "Checar" (empleada) y "Entrada de turno completo" (responsable).
-// Tabla registro_entradas: cada fila es una entrada; la salida se llena en la misma fila.
-// Al registrar la entrada también se guarda la asistencia del día (presente o retardo).
+// registro_entradas: cada fila es una entrada; la salida se llena en la misma fila.
 const crypto = require('crypto');
 const express = require('express');
 const prisma = require('../prisma');
@@ -31,7 +29,6 @@ const esUuid = (texto) => typeof texto === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}
 const segundos = (fecha) => Math.round(fecha.getTime() / 1000);
 const incluir = { sala: true, turno: true, usuario: { select: { id: true, nombre: true } } };
 
-// La entrada que sigue abierta (sin salida), si hay
 const registroAbierto = (usuarioId) =>
   prisma.registroEntrada.findFirst({
     where: { usuarioId, fechaHoraSalida: null },
@@ -39,9 +36,7 @@ const registroAbierto = (usuarioId) =>
     include: incluir,
   });
 
-// ¿A qué sala y turno corresponde esta entrada?
-// Del horario del día; si ese día tiene dos turnos, el más cercano a la hora de llegada.
-// Si no tiene horario, se pueden mandar salaId y turnoId en el body.
+// Sala y turno: del horario del día (el turno más cercano a la llegada) o salaId y turnoId del body.
 async function salaYTurno(persona, fechaHora, body) {
   if (body.salaId && body.turnoId) {
     const [sala, turno] = await Promise.all([
@@ -60,8 +55,7 @@ async function salaYTurno(persona, fechaHora, body) {
   return { sala: mejor.sala, turno: mejor.turno };
 }
 
-// ¿Está dentro del círculo de la estancia? Si la app manda latitud/longitud se calcula aquí;
-// si no, se usa dentroDeZona del body (true por defecto).
+// Con latitud/longitud se calcula; si no, dentroDeZona del body (true por defecto).
 function revisarZona(ubicacion, body) {
   const { latitud, longitud, dentroDeZona } = body;
   if (typeof latitud === 'number' && typeof longitud === 'number') {
@@ -70,7 +64,7 @@ function revisarZona(ubicacion, body) {
   return dentroDeZona ?? true;
 }
 
-// Guarda la asistencia del día al llegar. Si ya había una (por ejemplo, una incidencia), no la toca.
+// Asistencia del día al llegar; si ya había una, no la toca.
 async function marcarAsistencia(tx, persona, fechaHora, turno, registradoPorId) {
   const fecha = aFechaDb(fechaLocal(fechaHora));
   const existente = await tx.asistencia.findUnique({
@@ -89,7 +83,6 @@ async function marcarAsistencia(tx, persona, fechaHora, turno, registradoPorId) 
   });
 }
 
-// Crea la entrada + asistencia. Regresa { registro, asistencia } o { error, status }.
 async function registrarEntrada({ persona, fechaHora, body, registradoPorId, origen }) {
   const uuid = body.uuid ?? crypto.randomUUID();
   if (!esUuid(uuid)) {
@@ -132,7 +125,7 @@ async function registrarEntrada({ persona, fechaHora, body, registradoPorId, ori
   });
 }
 
-// GET /registros/estado  ->  { dentro, registroAbierto, turnosHoy, ubicacion }   (pantalla Checar)
+// GET /registros/estado
 router.get('/estado', async (req, res) => {
   const persona = await prisma.usuario.findUnique({
     where: { id: req.usuario.id },
@@ -143,12 +136,11 @@ router.get('/estado', async (req, res) => {
     dentro: !!abierto,
     registroAbierto: abierto,
     turnosHoy: await turnosDelDia(req.usuario.id, hoy()),
-    ubicacion: persona.estancia.ubicacion, // para que la app dibuje el círculo
+    ubicacion: persona.estancia.ubicacion,
   });
 });
 
 // GET /registros  ?desde=&hasta=&usuarioId=&dentroDeZona=false
-//   empleada: solo los suyos. Responsable: su estancia. Dirección: todos o ?estanciaId=
 router.get('/', async (req, res) => {
   const periodo = leerPeriodo(req.query);
   if (periodo.error) {
@@ -173,9 +165,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /registros/entrada  { uuid?, fechaHora?, latitud?, longitud?, dentroDeZona?, salaId?, turnoId? }
-//   ->  201 { registro, asistencia }
-// La persona checa por sí misma. Fuera de zona se guarda igual (no se bloquea)
-// para que la Responsable lo revise.
+//   Fuera de zona se guarda igual para que la Responsable lo revise.
 router.post('/entrada', permitir('empleada', 'responsable'), async (req, res) => {
   const body = req.body ?? {};
   const fechaHora = leerFechaHora(body.fechaHora);
@@ -199,7 +189,7 @@ router.post('/entrada', permitir('empleada', 'responsable'), async (req, res) =>
   res.status(status).json(resultado);
 });
 
-// POST /registros/salida  { fechaHora? }  ->  el registro con su salida
+// POST /registros/salida  { fechaHora? }
 router.post('/salida', permitir('empleada', 'responsable'), async (req, res) => {
   const fechaHora = leerFechaHora(req.body?.fechaHora);
   if (!fechaHora) {
@@ -226,8 +216,7 @@ router.post('/salida', permitir('empleada', 'responsable'), async (req, res) => 
   res.json(registro);
 });
 
-// POST /registros/turno  { usuarioIds: [..], fechaHora?, salaId?, turnoId? }  ->  201 { registradas, omitidas }
-// La Responsable registra la entrada de varias personas a la vez.
+// POST /registros/turno  { usuarioIds, fechaHora?, salaId?, turnoId? }
 router.post('/turno', permitir('responsable'), async (req, res) => {
   const body = req.body ?? {};
   const { usuarioIds } = body;
@@ -262,9 +251,8 @@ router.post('/turno', permitir('responsable'), async (req, res) => {
   res.status(201).json({ registradas, omitidas });
 });
 
-// PUT /registros/:id  { fechaHoraEntrada?, fechaHoraSalida?, motivo? }  (la Responsable corrige un registro)
-// Queda en correccion_registro como corrección aprobada por ella, con las horas de antes.
-// Si la corrección la pide la empleada, va por POST /correcciones y la Responsable la aprueba.
+// PUT /registros/:id  { fechaHoraEntrada?, fechaHoraSalida?, motivo? }
+//   Queda en correccion_registro como corrección aprobada.
 router.put('/:id', permitir('responsable'), async (req, res) => {
   const id = Number(req.params.id);
   const registro = await prisma.registroEntrada.findUnique({ where: { id }, include: { usuario: true } });
@@ -295,9 +283,7 @@ router.put('/:id', permitir('responsable'), async (req, res) => {
   res.json(actualizado);
 });
 
-// Lee { fechaHoraEntrada?, fechaHoraSalida? } y arma la corrección: horas de antes y propuestas.
-// Lo que no venga se queda igual; "fechaHoraSalida": null quita la salida.
-// Regresa { datos } o { error }. También lo usa /correcciones.
+// Arma la corrección (horas de antes y propuestas). "fechaHoraSalida": null quita la salida.
 function leerCorreccion(registro, body) {
   const entrada = body.fechaHoraEntrada === undefined ? registro.fechaHoraEntrada : leerFechaHora(body.fechaHoraEntrada);
   let salida = registro.fechaHoraSalida;

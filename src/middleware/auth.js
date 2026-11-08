@@ -2,13 +2,12 @@ const jwt = require('jsonwebtoken');
 
 const SECRET = process.env.JWT_SECRET;
 
-// Revisa el gafete: ¿la petición trae un token válido?
 function verificarToken(req, res, next) {
   const header = req.headers.authorization;
   if (!header) {
     return res.status(401).json({ error: 'Falta el token' });
   }
-  const token = header.split(' ')[1]; // "Bearer eyJ..." -> "eyJ..."
+  const token = header.split(' ')[1];
   try {
     req.usuario = jwt.verify(token, SECRET); // { id, rol, estanciaId, iat, exp }
     next();
@@ -17,8 +16,7 @@ function verificarToken(req, res, next) {
   }
 }
 
-// Va DESPUÉS de verificarToken: ya sabemos quién es, ¿su rol puede hacerlo?
-// Uso: permitir('responsable')  o  permitir('responsable', 'direccion')
+// Va después de verificarToken: permitir('responsable', 'direccion')
 function permitir(...roles) {
   return (req, res, next) => {
     if (!roles.includes(req.usuario.rol)) {

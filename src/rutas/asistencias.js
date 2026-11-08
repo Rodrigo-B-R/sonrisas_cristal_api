@@ -1,6 +1,4 @@
-// /asistencias  ·  "Mis asistencias" (empleada) y "Asistencia" (Responsable).
-// La tabla asistencia guarda una fila por persona y día: presente | retardo | falta | incidencia.
-// presente/retardo se guardan solos al registrar la entrada; falta/incidencia las pone la Responsable.
+// /asistencias: presente/retardo se guardan al checar entrada; falta/incidencia las pone la Responsable.
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -21,9 +19,7 @@ const router = express.Router();
 
 const conMotivo = { include: { motivo: true } };
 
-// Revisa estado y motivo. El motivo sale del catálogo motivo_ausencia (GET /catalogos):
-// se manda motivoId (número) o motivo (su descripción, por ejemplo "enfermedad").
-// Regresa { motivoId } o { error }.
+// El motivo sale de motivo_ausencia: se manda motivoId o motivo (descripción). Regresa { motivoId } o { error }.
 async function revisar(estado, { motivoId, motivo }) {
   if (!ESTADOS_ASISTENCIA.includes(estado)) {
     return { error: 'Estado no válido', opciones: ESTADOS_ASISTENCIA };
@@ -46,9 +42,6 @@ async function revisar(estado, { motivoId, motivo }) {
 }
 
 // GET /asistencias  ?desde=&hasta=  (por defecto, esta semana)
-//   empleada, o con ?usuarioId=          ->  { desde, hasta, persona, resumen, dias }
-//   responsable/dirección sin usuarioId  ->  [ { persona, resumen, dias }, ... ]
-// Cada día junta horario + asistencia + registros. Ver estados en src/calculos.js
 router.get('/', async (req, res) => {
   const periodo = leerPeriodo(req.query, 400);
   if (periodo.error) {
@@ -66,7 +59,7 @@ router.get('/', async (req, res) => {
   const datos = await cargarDatos(where, desde, hasta);
   const fechas = rangoDeFechas(desde, hasta);
   const resultado = datos.personas
-    .filter((p) => unaPersona || fechas.some((f) => estabaActiva(p, f))) // sin quien no trabajó en el periodo
+    .filter((p) => unaPersona || fechas.some((f) => estabaActiva(p, f)))
     .map((p) => asistenciaDePersona(p, fechas, datos));
   if (unaPersona) {
     if (resultado.length === 0) return res.status(404).json({ error: 'No encontrado' });
@@ -75,8 +68,7 @@ router.get('/', async (req, res) => {
   res.json(resultado);
 });
 
-// POST /asistencias  { usuarioId, fecha, estado, motivoId? | motivo? }  ->  201 (o 200 si ya había y se corrigió)
-// La Responsable marca una falta o incidencia, o corrige el estado de un día.
+// POST /asistencias  { usuarioId, fecha, estado, motivoId? | motivo? }
 router.post('/', permitir('responsable'), async (req, res) => {
   const body = req.body ?? {};
   const { usuarioId, fecha, estado } = body;

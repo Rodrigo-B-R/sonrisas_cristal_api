@@ -1,4 +1,3 @@
-// Constantes y funciones pequeñas que usan varias rutas.
 const crypto = require('crypto');
 const prisma = require('./prisma');
 
@@ -13,13 +12,10 @@ const ESTADOS_CORRECCION = ['pendiente', 'aprobada', 'rechazada'];
 // Un horario sin fecha de fin se guarda hasta esta fecha (vigente_hasta no acepta NULL)
 const SIN_FIN = '2099-12-31';
 
-// ── Fechas ──────────────────────────────────────────────────────────
-// Las fechas sueltas viajan como texto "2026-10-07" y las horas como "07:00".
-// "Hoy" y los retardos se calculan con la zona horaria de TZ (America/Monterrey por defecto).
+// "Hoy" y los retardos usan la zona horaria de TZ.
 
 const dos = (n) => String(n).padStart(2, '0');
 
-// Date (instante) -> "2026-10-07" / "07:12" en hora local
 const fechaLocal = (fecha) => `${fecha.getFullYear()}-${dos(fecha.getMonth() + 1)}-${dos(fecha.getDate())}`;
 const horaLocal = (fecha) => `${dos(fecha.getHours())}:${dos(fecha.getMinutes())}`;
 
@@ -39,13 +35,11 @@ function esFecha(texto) {
 
 const esHora = (texto) => typeof texto === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(texto);
 
-// "07:12" -> 432
 function minutos(hora) {
   const [h, m] = hora.split(':').map(Number);
   return h * 60 + m;
 }
 
-// "2026-11-02" -> "lunes"
 const nombreDia = (fecha) => DIAS[(aFechaDb(fecha).getUTCDay() + 6) % 7];
 
 const inicioDelDia = (fecha) => new Date(`${fecha}T00:00:00`);
@@ -57,7 +51,6 @@ function sumarDias(fecha, dias) {
   return deFechaDb(d);
 }
 
-// Lista de fechas de `desde` a `hasta`, inclusive
 function rangoDeFechas(desde, hasta) {
   const fechas = [];
   for (let f = desde; f <= hasta; f = sumarDias(f, 1)) fechas.push(f);
@@ -67,7 +60,6 @@ function rangoDeFechas(desde, hasta) {
 const lunesDeLaSemana = (fecha) => sumarDias(fecha, -DIAS.indexOf(nombreDia(fecha)));
 
 // Lee ?desde=&hasta= del query. Por defecto: de lunes de esta semana a hoy.
-// Regresa { desde, hasta } o { error }.
 function leerPeriodo(query, maxDias = 100) {
   const desde = query.desde ?? lunesDeLaSemana(hoy());
   const hasta = query.hasta ?? hoy();
@@ -83,8 +75,7 @@ function leerPeriodo(query, maxDias = 100) {
   return { desde, hasta };
 }
 
-// Lee fechaHora del body. Sin ella, es "ahora". Con ella (registro hecho sin
-// conexión que llega después) no puede ser del futuro.
+// fechaHora del body (registro sin conexión que llega después) o ahora; no puede ser del futuro.
 function leerFechaHora(valor) {
   if (valor === undefined || valor === null) return new Date();
   const fecha = new Date(valor);
@@ -93,9 +84,7 @@ function leerFechaHora(valor) {
   return fecha;
 }
 
-// ── Alcance por rol ─────────────────────────────────────────────────
-// Empleada y Responsable solo ven su estancia. Dirección ve todas
-// y puede filtrar con ?estanciaId=.
+// Empleada y Responsable solo ven su estancia; Dirección todas o ?estanciaId=
 function filtroEstancia(req) {
   if (req.usuario.rol === 'direccion') {
     return req.query.estanciaId ? { estanciaId: Number(req.query.estanciaId) } : {};
@@ -103,13 +92,10 @@ function filtroEstancia(req) {
   return { estanciaId: req.usuario.estanciaId };
 }
 
-// ¿Este registro (con estanciaId) es visible para quien hace la petición?
 const esDeMiEstancia = (req, registro) =>
   req.usuario.rol === 'direccion' || registro.estanciaId === req.usuario.estanciaId;
 
-// ── Horarios ────────────────────────────────────────────────────────
-// Una persona puede tener varios horarios (uno por cada vez que se lo cambiaron).
-// El que vale en una fecha es el que la cubre; si hay dos, el más nuevo (id mayor).
+// Horario vigente en una fecha: el que la cubre; si hay dos, el más nuevo (id mayor).
 const incluirDias = { dias: { include: { turno: true, sala: true }, orderBy: { id: 'asc' } } };
 
 function horarioVigente(horarios, fecha) {
@@ -127,7 +113,6 @@ function diasDelHorario(horarios, fecha) {
   return horario ? horario.dias.filter((d) => d.diaDeSemana === nombreDia(fecha)) : [];
 }
 
-// Lo mismo pero consultando la base (para una sola persona)
 async function turnosDelDia(usuarioId, fecha) {
   const horarios = await prisma.horario.findMany({
     where: { usuarioId, vigenteDesde: { lte: aFechaDb(fecha) }, vigenteHasta: { gte: aFechaDb(fecha) } },
@@ -136,8 +121,6 @@ async function turnosDelDia(usuarioId, fecha) {
   return diasDelHorario(horarios, fecha);
 }
 
-// ── Contraseñas ─────────────────────────────────────────────────────
-// Regresa la lista de requisitos que NO cumple (vacía = válida)
 function revisarPassword(nueva, anterior) {
   const faltan = [];
   if (typeof nueva !== 'string' || nueva.length < 8) faltan.push('Al menos 8 caracteres');
@@ -147,7 +130,6 @@ function revisarPassword(nueva, anterior) {
   return faltan;
 }
 
-// Contraseña temporal fácil de dictar: sin 0/O ni 1/l/I
 function passwordTemporal() {
   const letras = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   let texto = '';
@@ -155,18 +137,14 @@ function passwordTemporal() {
   return texto;
 }
 
-// Auditoría: los triggers de registro_entradas, asistencia y correccion_registro
-// guardan en la tabla auditoria quién hizo cada cambio, leyendo app.id_usuario.
-// Todo lo que escriba en esas tablas va dentro de conAutor:
-//   await conAutor(req.usuario.id, (tx) => tx.asistencia.create({ ... }))
-// set_config(..., true) es lo mismo que SET LOCAL: solo vale dentro de esta transacción.
+// Auditoría: todo lo que escriba en registro_entradas, asistencia o correccion_registro va dentro de conAutor,
+// así los triggers guardan quién hizo el cambio (SET LOCAL app.id_usuario).
 const conAutor = (usuarioId, trabajo) =>
   prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.id_usuario', ${String(usuarioId)}, true)`;
     return trabajo(tx);
   });
 
-// Distancia en metros entre dos puntos (fórmula de haversine)
 function distanciaMetros(lat1, lon1, lat2, lon2) {
   const rad = (g) => (g * Math.PI) / 180;
   const a =

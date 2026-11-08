@@ -1,5 +1,4 @@
-// Cálculos que usan /asistencias y los reportes (/cobertura, /resumen, /estadisticas, /exportar).
-// Juntan en memoria lo que dicen horario, asistencia y registro_entradas de cada día.
+// Cálculos para /asistencias y los reportes: junta horario, asistencia y registros de cada día.
 const prisma = require('./prisma');
 const {
   hoy,
@@ -26,7 +25,6 @@ function agrupar(lista, clave) {
 }
 
 // Trae personas, horarios, asistencias y registros de un periodo en pocas consultas.
-// Incluye a quien estaba activa o se dio de baja dentro del periodo. Dirección no cuenta.
 async function cargarDatos(wherePersonas, desde, hasta) {
   const personas = await prisma.usuario.findMany({
     where: {
@@ -127,7 +125,7 @@ function asistenciaDePersona(persona, fechas, datos) {
     .filter((f) => estabaActiva(persona, f))
     .map((f) => calcularDia(persona, f, datos))
     .filter((d) => d.estado !== 'descanso')
-    .reverse(); // lo más reciente primero, como en la pantalla
+    .reverse();
   const { horarios, movimientos, ...datosPersona } = persona;
   return {
     persona: datosPersona,
@@ -181,7 +179,7 @@ function calcularCobertura(estancia, turnos, fecha, datos) {
     for (const t of fila.turnos) {
       const turno = turnos.find((x) => x.id === t.turnoId);
       t.empezado = turnoEmpezado(fecha, turno);
-      t.sinCubrir = t.programados < fila.minimo; // el horario no alcanza el mínimo
+      t.sinCubrir = t.programados < fila.minimo;
       t.faltan = Math.max(0, fila.minimo - (t.empezado ? t.presentes : t.programados));
       t.bajoMinimo = t.faltan > 0;
       if (t.bajoMinimo) {

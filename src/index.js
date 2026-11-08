@@ -11,11 +11,9 @@ const { verificarToken } = require('./middleware/auth');
 
 const app = express();
 
-// ── Middleware global ───────────────────────────────────────────────
-app.use(express.json()); // convierte el body JSON en req.body
+app.use(express.json());
 
-// Las columnas DATE y TIME de Postgres llegan como fechas completas en UTC.
-// Al responder, se mandan cortas: "2026-11-04" y "07:00".
+// Las columnas DATE y TIME se responden cortas: "2026-11-04" y "07:00".
 const CAMPOS_FECHA = ['fecha', 'vigenteDesde', 'vigenteHasta'];
 const CAMPOS_HORA = ['horaEntrada', 'horaSalida'];
 app.set('json replacer', (clave, valor) => {
@@ -26,11 +24,10 @@ app.set('json replacer', (clave, valor) => {
 });
 
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`); // logger
+  console.log(`${req.method} ${req.url}`);
   next();
 });
 
-// ── Rutas públicas ──────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({ mensaje: 'API de Sonrisas de Cristal funcionando' });
 });
@@ -38,8 +35,7 @@ app.get('/', (req, res) => {
 // POST /login, y con token: GET /perfil, PUT /perfil/password
 app.use(require('./rutas/sesion'));
 
-// ── De aquí para abajo, todo pide token ─────────────────────────────
-// Cada archivo de src/rutas/ es un Router de Express con su CRUD.
+// Todo lo de abajo pide token
 app.use('/catalogos', verificarToken, require('./rutas/catalogos'));
 app.use('/estancias', verificarToken, require('./rutas/estancias'));
 app.use('/salas', verificarToken, require('./rutas/salas'));
@@ -55,12 +51,10 @@ app.use('/auditoria', verificarToken, require('./rutas/auditoria'));
 // (cada ruta pide el token por su cuenta, para que una ruta inexistente dé 404 y no 401)
 app.use(require('./rutas/reportes'));
 
-// Ruta que no existe
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });
 });
 
-// ── Errores ─────────────────────────────────────────────────────────
 // Express 5 manda aquí cualquier error de una ruta async.
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {

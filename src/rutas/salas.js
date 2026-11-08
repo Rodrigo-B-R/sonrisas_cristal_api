@@ -1,5 +1,4 @@
-// /salas  ·  pantalla "Salas y mínimos". La Responsable administra las de su estancia.
-// No hay DELETE: el usuario de la API en la base no tiene permiso de borrar.
+// Sin DELETE: api_user no tiene permiso de borrar.
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -27,7 +26,7 @@ router.get('/:id', async (req, res) => {
   res.json(sala);
 });
 
-router.use(permitir('responsable')); // lo de abajo solo la Responsable
+router.use(permitir('responsable'));
 
 // POST /salas  { nombre, minimoPersonal }  ->  201
 router.post('/', async (req, res) => {

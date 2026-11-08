@@ -18,7 +18,6 @@ router.post('/login', async (req, res) => {
     omit: { password: false }, // aquí sí lo necesitamos, para compararlo
     include: { rol: true },
   });
-  // bcrypt.compare saca el hash del texto y lo compara con el guardado
   if (!usuario || !usuario.estaActivo || !(await bcrypt.compare(password, usuario.password))) {
     return res.status(401).json({ error: 'No autorizado' });
   }
@@ -31,7 +30,7 @@ router.post('/login', async (req, res) => {
   });
 });
 
-// GET /perfil  ->  el usuario dueño del token, con su rol, puesto y estancia
+// GET /perfil
 router.get('/perfil', verificarToken, async (req, res) => {
   const usuario = await prisma.usuario.findUnique({
     where: { id: req.usuario.id },
@@ -44,7 +43,6 @@ router.get('/perfil', verificarToken, async (req, res) => {
 });
 
 // PUT /perfil/password  { actual, nueva }  ->  { mensaje }
-// La usa la pantalla "Crea tu contraseña" y "Mi cuenta".
 router.put('/perfil/password', verificarToken, async (req, res) => {
   const { actual, nueva } = req.body ?? {};
   if (!actual || !nueva) {

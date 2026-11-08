@@ -1,6 +1,3 @@
-// /estancias  ·  cualquiera con sesión puede verlas; solo Dirección las crea o cambia.
-// Cada estancia tiene una ubicación: el punto y el radio (precision, en metros)
-// donde la app considera que la persona "está en la estancia".
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -9,7 +6,6 @@ const router = express.Router();
 
 const incluir = { ubicacion: true, salas: { orderBy: { id: 'asc' } } };
 
-// Revisa latitud, longitud y precision (los que vengan). Regresa el error o null.
 function revisarUbicacion({ latitud, longitud, precision }) {
   if (latitud !== undefined && !(typeof latitud === 'number' && latitud >= -90 && latitud <= 90)) {
     return 'latitud es un número entre -90 y 90';
@@ -23,7 +19,7 @@ function revisarUbicacion({ latitud, longitud, precision }) {
   return null;
 }
 
-// GET /estancias  ->  todas, con su ubicación y salas
+// GET /estancias
 router.get('/', async (req, res) => {
   const estancias = await prisma.estancia.findMany({ orderBy: { id: 'asc' }, include: incluir });
   res.json(estancias);

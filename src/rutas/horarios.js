@@ -1,7 +1,4 @@
-// /horarios  ·  pantalla "Horarios" (Responsable) y "Mi horario" (empleada).
-// Un horario es la semana de una persona, válida desde una fecha.
-// Cambiarlo NO borra el anterior: se cierra (vigenteHasta = día anterior) y se crea uno nuevo.
-// Así se sabe qué horario tenía la persona en cualquier fecha pasada.
+// Cambiar un horario no lo borra: se cierra el anterior y se crea uno nuevo.
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -19,7 +16,6 @@ const {
 
 const router = express.Router();
 
-// Trae los horarios que cubren esa fecha y deja solo el vigente
 async function horarioDe(usuarioId, fecha) {
   const horarios = await prisma.horario.findMany({
     where: { usuarioId, vigenteDesde: { lte: aFechaDb(fecha) }, vigenteHasta: { gte: aFechaDb(fecha) } },
@@ -29,9 +25,6 @@ async function horarioDe(usuarioId, fecha) {
 }
 
 // GET /horarios  ?fecha= (hoy por defecto)
-//   empleada                ->  su horario vigente (o null)
-//   ?usuarioId=             ->  el de esa persona
-//   responsable/dirección   ->  [ { persona, horario } ] del personal activo de la estancia
 router.get('/', async (req, res) => {
   const fecha = req.query.fecha ?? hoy();
   if (!esFecha(fecha)) {
@@ -59,8 +52,7 @@ router.get('/', async (req, res) => {
 });
 
 // PUT /horarios/:usuarioId  { desde?, dias: [{ dia, turnoId, salaId }] }  ->  201 horario nuevo
-//   dia: "lunes" ... "domingo" (sin acentos). Día que no venga = descanso.
-//   desde: a partir de cuándo vale (hoy por defecto).
+//   dia: lunes ... domingo (sin acentos). Día que no venga = descanso.
 router.put('/:usuarioId', permitir('responsable'), async (req, res) => {
   const usuarioId = Number(req.params.usuarioId);
   const persona = await prisma.usuario.findUnique({ where: { id: usuarioId } });

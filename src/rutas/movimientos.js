@@ -1,5 +1,3 @@
-// /movimientos  ·  historial de altas, bajas y traslados (movimiento_usuario).
-// La Responsable ve los que tocan su estancia (salió de ahí o llegó ahí).
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');

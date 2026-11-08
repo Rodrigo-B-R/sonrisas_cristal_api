@@ -1,9 +1,4 @@
-// Modelos de Prisma para las tablas del repo sonrisas_cristal_db (init/01-init.sql).
-// Las tablas NO las crea Prisma: las crea ese script (npm run db:crear).
-// Aquí solo se describen para poder consultarlas desde la API.
-//
-// En JavaScript los nombres van en camelCase; @map / @@map dicen cómo se llaman en Postgres.
-// Los id son BIGINT en Postgres; aquí van como Int para que viajen como número normal en el JSON.
+// Describe las tablas de sonrisas_cristal_db/init/01-init.sql (no las crea). @map = nombre en Postgres.
 
 generator client {
   provider = "prisma-client-js"
@@ -13,9 +8,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ── Catálogos ────────────────────────────────────────────────────────
-
-// empleada | responsable | direccion
 model Rol {
   id       Int       @id @default(autoincrement())
   nombre   String    @db.VarChar(255)
@@ -24,7 +16,6 @@ model Rol {
   @@map("rol")
 }
 
-// Maestra titular, Asistente, Auxiliar, Cocina...
 model Puesto {
   id       Int       @id @default(autoincrement())
   nombre   String    @db.VarChar(255)
@@ -33,7 +24,6 @@ model Puesto {
   @@map("puesto")
 }
 
-// Renuncia, Fin de contrato, Otro...
 model CausaBaja {
   id          Int                 @id @default(autoincrement())
   nombre      String              @db.VarChar(255)
@@ -42,7 +32,6 @@ model CausaBaja {
   @@map("causa_baja")
 }
 
-// enfermedad, permiso, personal, transporte, otro (falta e incidencia lo exigen)
 model MotivoAusencia {
   id          Int          @id @default(autoincrement())
   descripcion String       @unique(map: "motivo_ausencia_descripcion_key") @db.VarChar(255)
@@ -51,7 +40,6 @@ model MotivoAusencia {
   @@map("motivo_ausencia")
 }
 
-// matutino 07:00-15:00, vespertino 12:00-20:00
 model Turno {
   id          Int               @id @default(autoincrement())
   nombre      String            @db.VarChar(255)
@@ -63,7 +51,7 @@ model Turno {
   @@map("turno")
 }
 
-// Dónde está la estancia: el círculo de "Estás en la estancia" (precision = radio en metros)
+// precision = radio en metros para "dentro de zona"
 model Ubicacion {
   id        Int               @id @default(autoincrement())
   nombre    String            @db.VarChar(255)
@@ -75,8 +63,6 @@ model Ubicacion {
 
   @@map("ubicacion")
 }
-
-// ── Estancias y salas ────────────────────────────────────────────────
 
 model Estancia {
   id                 Int                 @id @default(autoincrement())
@@ -105,13 +91,11 @@ model Sala {
   @@map("sala")
 }
 
-// ── Usuarios ─────────────────────────────────────────────────────────
-
 model Usuario {
   id         Int     @id @default(autoincrement())
   nombre     String  @db.VarChar(255)
   password   String  @map("password_hash") @db.VarChar(255) // hash de bcrypt, nunca el texto
-  clave      String  @unique(map: "usuario_clave_unica") @map("usuario_login") @db.VarChar(255) // con lo que inicia sesión
+  clave      String  @unique(map: "usuario_clave_unica") @map("usuario_login") @db.VarChar(255)
   correo     String  @unique(map: "usuario_correo_unico") @db.VarChar(255)
   celular    String  @db.VarChar(255)
   estaActivo Boolean @map("esta_activo")
@@ -139,7 +123,6 @@ model Usuario {
   @@map("usuario")
 }
 
-// alta | baja | traslado. Es el historial de la persona.
 model MovimientoUsuario {
   id                Int      @id @default(autoincrement())
   tipo              String   @db.VarChar(255)
@@ -160,14 +143,12 @@ model MovimientoUsuario {
   @@map("movimiento_usuario")
 }
 
-// ── Avisos ───────────────────────────────────────────────────────────
-
 model Aviso {
   id                   Int            @id @default(autoincrement())
   asunto               String         @db.VarChar(255)
   tipoAviso            String         @map("tipo_aviso") @db.VarChar(255)
   mensaje              String         @db.VarChar(255)
-  requiereConfirmacion Boolean        @default(false) @map("requiere_confirmacion") // true: cada quien debe confirmar que lo leyó
+  requiereConfirmacion Boolean        @default(false) @map("requiere_confirmacion")
   autorId              Int            @map("id_usuario_envia")
   estanciaId           Int?           @map("id_estancia") // null = aviso general
   autor                Usuario        @relation(fields: [autorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -177,7 +158,6 @@ model Aviso {
   @@map("aviso")
 }
 
-// A quién le llegó cada aviso y si ya lo leyó
 model AvisoUsuario {
   avisoId   Int       @map("id_aviso")
   usuarioId Int       @map("id_usuario")
@@ -190,9 +170,6 @@ model AvisoUsuario {
   @@map("aviso_usuario")
 }
 
-// ── Horarios ─────────────────────────────────────────────────────────
-
-// La semana de una persona, válida de vigenteDesde a vigenteHasta
 model Horario {
   id           Int          @id @default(autoincrement())
   usuarioId    Int          @map("id_usuario")
@@ -204,7 +181,6 @@ model Horario {
   @@map("horario")
 }
 
-// Un día de esa semana: lunes, turno matutino, sala Maternal A
 model HorarioDia {
   id          Int     @id @default(autoincrement())
   diaDeSemana String  @map("dia_de_semana") @db.VarChar(255) // lunes ... domingo (sin acentos)
@@ -219,9 +195,6 @@ model HorarioDia {
   @@map("horario_dia")
 }
 
-// ── Registros ────────────────────────────────────────────────────────
-
-// Una entrada y su salida (fechaHoraSalida es null mientras sigue dentro)
 model RegistroEntrada {
   id               Int       @id @default(autoincrement())
   uuid             String    @unique(map: "registro_entradas_uuid_unico") @db.Uuid // lo genera el celular: evita duplicados al reenviar sin internet
@@ -245,7 +218,6 @@ model RegistroEntrada {
   @@map("registro_entradas")
 }
 
-// Cómo le fue a la persona ese día: presente | retardo | falta | incidencia (una por día)
 model Asistencia {
   id              Int      @id @default(autoincrement())
   fecha           DateTime @db.Date
@@ -264,8 +236,7 @@ model Asistencia {
   @@map("asistencia")
 }
 
-// Solicitud para corregir la hora de un registro: pendiente | aprobada | rechazada.
-// El registro no cambia hasta que se aprueba. Guarda las horas de antes y las propuestas.
+// pendiente | aprobada | rechazada; el registro cambia solo al aprobar
 model CorreccionRegistro {
   id               Int       @id @default(autoincrement())
   registroId       Int       @map("id_registro_entrada")
@@ -287,8 +258,7 @@ model CorreccionRegistro {
   @@map("correccion_registro")
 }
 
-// Historial de cambios en registro_entradas, asistencia y correccion_registro.
-// La llenan los triggers de la base; la API solo la lee (api_user no puede escribirla).
+// La llenan los triggers; la API solo la lee.
 model Auditoria {
   id              Int      @id @default(autoincrement())
   usuarioId       Int?     @map("id_usuario") // quién hizo el cambio (lo fija conAutor en src/prisma.js)

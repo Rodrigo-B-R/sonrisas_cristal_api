@@ -1,6 +1,4 @@
-// /correcciones  ·  pedir que se corrija la hora de un registro (tabla correccion_registro).
-// La empleada la pide; la Responsable de su estancia la aprueba o la rechaza.
-// El registro no cambia hasta que se aprueba.
+// /correcciones: la empleada pide corregir la hora de un registro; la Responsable aprueba o rechaza.
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -16,7 +14,6 @@ const incluir = {
 };
 
 // GET /correcciones  ?estado=pendiente|aprobada|rechazada
-//   empleada: las suyas. Responsable: las de su estancia. Dirección: todas o ?estanciaId=
 router.get('/', async (req, res) => {
   const where = {};
   if (req.query.estado) {
@@ -35,8 +32,7 @@ router.get('/', async (req, res) => {
   res.json(correcciones);
 });
 
-// POST /correcciones  { registroId, fechaHoraEntrada?, fechaHoraSalida?, motivo }  ->  201 pendiente
-// La empleada pide corregir uno de sus registros (por ejemplo, olvidó checar la salida).
+// POST /correcciones  { registroId, fechaHoraEntrada?, fechaHoraSalida?, motivo }
 router.post('/', permitir('empleada', 'responsable'), async (req, res) => {
   const body = req.body ?? {};
   if (!body.registroId || !body.motivo) {
@@ -46,7 +42,6 @@ router.post('/', permitir('empleada', 'responsable'), async (req, res) => {
     where: { id: Number(body.registroId) || 0 },
     include: { usuario: true },
   });
-  // La empleada solo los suyos; la Responsable, los de su estancia
   const esSuyo =
     registro && (req.usuario.rol === 'empleada' ? registro.usuarioId === req.usuario.id : esDeMiEstancia(req, registro.usuario));
   if (!esSuyo) {
@@ -71,8 +66,7 @@ router.post('/', permitir('empleada', 'responsable'), async (req, res) => {
   res.status(201).json(correccion);
 });
 
-// Aprueba o rechaza una corrección pendiente de su estancia.
-// Al aprobar, en la misma transacción se cambian las horas del registro.
+// Al aprobar, la hora del registro cambia en la misma transacción.
 async function resolver(req, res, estado) {
   const id = Number(req.params.id);
   const correccion = await prisma.correccionRegistro.findUnique({
@@ -101,10 +95,10 @@ async function resolver(req, res, estado) {
   res.json(resuelta);
 }
 
-// POST /correcciones/:id/aprobar   ->  la corrección + el registro ya cambiado
+// POST /correcciones/:id/aprobar
 router.post('/:id/aprobar', permitir('responsable'), (req, res) => resolver(req, res, 'aprobada'));
 
-// POST /correcciones/:id/rechazar  ->  la corrección; el registro no cambia
+// POST /correcciones/:id/rechazar
 router.post('/:id/rechazar', permitir('responsable'), (req, res) => resolver(req, res, 'rechazada'));
 
 module.exports = router;
