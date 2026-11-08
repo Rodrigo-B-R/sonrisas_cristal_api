@@ -6,7 +6,6 @@ const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
 const {
   ESTADOS_ASISTENCIA,
-  MOTIVOS_ASISTENCIA,
   hoy,
   esFecha,
   aFechaDb,
@@ -14,23 +13,36 @@ const {
   leerPeriodo,
   filtroEstancia,
   esDeMiEstancia,
+  conAutor,
 } = require('../utilidades');
 const { cargarDatos, estabaActiva, asistenciaDePersona } = require('../calculos');
 
 const router = express.Router();
 
-// Revisa estado y motivo. Regresa el error o null.
-function revisar(estado, motivo) {
+const conMotivo = { include: { motivo: true } };
+
+// Revisa estado y motivo. El motivo sale del catálogo motivo_ausencia (GET /catalogos):
+// se manda motivoId (número) o motivo (su descripción, por ejemplo "enfermedad").
+// Regresa { motivoId } o { error }.
+async function revisar(estado, { motivoId, motivo }) {
   if (!ESTADOS_ASISTENCIA.includes(estado)) {
     return { error: 'Estado no válido', opciones: ESTADOS_ASISTENCIA };
   }
-  if (motivo !== undefined && motivo !== null && !MOTIVOS_ASISTENCIA.includes(motivo)) {
-    return { error: 'Motivo no válido', opciones: MOTIVOS_ASISTENCIA };
+  let encontrado = null;
+  if (motivoId !== undefined && motivoId !== null) {
+    encontrado = await prisma.motivoAusencia.findUnique({ where: { id: Number(motivoId) || 0 } });
+  } else if (motivo !== undefined && motivo !== null) {
+    encontrado = await prisma.motivoAusencia.findUnique({ where: { descripcion: String(motivo) } });
   }
-  if ((estado === 'falta' || estado === 'incidencia') && !motivo) {
-    return { error: 'Falta e incidencia necesitan motivo', opciones: MOTIVOS_ASISTENCIA };
+  const mandoMotivo = (motivoId ?? motivo ?? null) !== null;
+  if ((mandoMotivo && !encontrado) || ((estado === 'falta' || estado === 'incidencia') && !encontrado)) {
+    const opciones = await prisma.motivoAusencia.findMany({ orderBy: { id: 'asc' } });
+    return {
+      error: mandoMotivo ? 'Motivo no válido' : 'Falta e incidencia necesitan motivo (motivoId o motivo)',
+      opciones,
+    };
   }
-  return null;
+  return { motivoId: encontrado?.id ?? null };
 }
 
 // GET /asistencias  ?desde=&hasta=  (por defecto, esta semana)
@@ -63,19 +75,20 @@ router.get('/', async (req, res) => {
   res.json(resultado);
 });
 
-// POST /asistencias  { usuarioId, fecha, estado, motivo? }  ->  201 (o 200 si ya había y se corrigió)
+// POST /asistencias  { usuarioId, fecha, estado, motivoId? | motivo? }  ->  201 (o 200 si ya había y se corrigió)
 // La Responsable marca una falta o incidencia, o corrige el estado de un día.
 router.post('/', permitir('responsable'), async (req, res) => {
-  const { usuarioId, fecha, estado, motivo } = req.body ?? {};
+  const body = req.body ?? {};
+  const { usuarioId, fecha, estado } = body;
   if (!usuarioId || !fecha || !estado) {
     return res.status(400).json({ error: 'Faltan usuarioId, fecha o estado' });
   }
   if (!esFecha(fecha)) {
     return res.status(400).json({ error: 'La fecha va como AAAA-MM-DD' });
   }
-  const error = revisar(estado, motivo);
-  if (error) {
-    return res.status(400).json(error);
+  const revisado = await revisar(estado, body);
+  if (revisado.error) {
+    return res.status(400).json(revisado);
   }
   const persona = await prisma.usuario.findUnique({ where: { id: Number(usuarioId) } });
   if (!persona || !esDeMiEstancia(req, persona)) {
@@ -83,29 +96,39 @@ router.post('/', permitir('responsable'), async (req, res) => {
   }
   const clave = { usuarioId: persona.id, estanciaId: persona.estanciaId, fecha: aFechaDb(fecha) };
   const existente = await prisma.asistencia.findUnique({ where: { usuarioId_estanciaId_fecha: clave } });
-  const datos = { estado, motivo: motivo ?? null, registradoPorId: req.usuario.id };
+  const datos = { estado, motivoId: revisado.motivoId, registradoPorId: req.usuario.id };
   if (existente) {
-    return res.json(await prisma.asistencia.update({ where: { id: existente.id }, data: datos }));
+    const actualizada = await conAutor(req.usuario.id, (tx) =>
+      tx.asistencia.update({ where: { id: existente.id }, data: datos, ...conMotivo }),
+    );
+    return res.json(actualizada);
   }
-  res.status(201).json(await prisma.asistencia.create({ data: { ...clave, ...datos } }));
+  const nueva = await conAutor(req.usuario.id, (tx) =>
+    tx.asistencia.create({ data: { ...clave, ...datos }, ...conMotivo }),
+  );
+  res.status(201).json(nueva);
 });
 
-// PUT /asistencias/:id  { estado, motivo? }  (la Responsable corrige)
+// PUT /asistencias/:id  { estado, motivoId? | motivo? }  (la Responsable corrige)
 router.put('/:id', permitir('responsable'), async (req, res) => {
   const id = Number(req.params.id);
   const asistencia = await prisma.asistencia.findUnique({ where: { id } });
   if (!asistencia || !esDeMiEstancia(req, asistencia)) {
     return res.status(404).json({ error: 'No encontrada' });
   }
-  const { estado = asistencia.estado, motivo } = req.body ?? {};
-  const error = revisar(estado, motivo);
-  if (error) {
-    return res.status(400).json(error);
+  const body = req.body ?? {};
+  const estado = body.estado ?? asistencia.estado;
+  const revisado = await revisar(estado, body);
+  if (revisado.error) {
+    return res.status(400).json(revisado);
   }
-  const actualizada = await prisma.asistencia.update({
-    where: { id },
-    data: { estado, motivo: motivo ?? null, registradoPorId: req.usuario.id },
-  });
+  const actualizada = await conAutor(req.usuario.id, (tx) =>
+    tx.asistencia.update({
+      where: { id },
+      data: { estado, motivoId: revisado.motivoId, registradoPorId: req.usuario.id },
+      ...conMotivo,
+    }),
+  );
   res.json(actualizada);
 });
 

@@ -1,5 +1,5 @@
-// /catalogos  ·  las listas para los menús de la app (roles, puestos, turnos, causas de baja).
-// Cualquiera con sesión las lee. Dirección puede agregar puestos y causas de baja.
+// /catalogos  ·  las listas para los menús de la app (roles, puestos, turnos, causas de baja, motivos de ausencia).
+// Cualquiera con sesión las lee. Dirección puede agregar puestos, causas de baja y motivos.
 const express = require('express');
 const prisma = require('../prisma');
 const { permitir } = require('../middleware/auth');
@@ -9,15 +9,25 @@ const router = express.Router();
 
 const porId = { orderBy: { id: 'asc' } };
 
-// GET /catalogos  ->  { roles, puestos, turnos, causasBaja }
+// GET /catalogos  ->  { roles, puestos, turnos, causasBaja, motivosAusencia }
 router.get('/', async (req, res) => {
-  const [roles, puestos, turnos, causasBaja] = await Promise.all([
+  const [roles, puestos, turnos, causasBaja, motivosAusencia] = await Promise.all([
     prisma.rol.findMany(porId),
     prisma.puesto.findMany(porId),
     prisma.turno.findMany(porId),
     prisma.causaBaja.findMany(porId),
+    prisma.motivoAusencia.findMany(porId),
   ]);
-  res.json({ roles, puestos, turnos, causasBaja });
+  res.json({ roles, puestos, turnos, causasBaja, motivosAusencia });
+});
+
+// POST /catalogos/motivos-ausencia  { descripcion }  ->  201 · 409 si ya existe
+router.post('/motivos-ausencia', permitir('direccion'), async (req, res) => {
+  const { descripcion } = req.body ?? {};
+  if (!descripcion) {
+    return res.status(400).json({ error: 'Falta la descripcion' });
+  }
+  res.status(201).json(await prisma.motivoAusencia.create({ data: { descripcion } }));
 });
 
 // POST /catalogos/puestos  { nombre }  ->  201

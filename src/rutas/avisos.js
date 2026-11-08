@@ -96,7 +96,8 @@ router.get('/:id', async (req, res) => {
 //   destino "sala"     -> quien tenga esa sala en su horario vigente
 //   destino "personas" -> los usuarioIds
 router.post('/', permitir('responsable'), async (req, res) => {
-  const { asunto, mensaje, tipoAviso, destino = 'todos', turnoId, salaId, usuarioIds } = req.body ?? {};
+  const { asunto, mensaje, tipoAviso, destino = 'todos', turnoId, salaId, usuarioIds, requiereConfirmacion = false } =
+    req.body ?? {};
   if (!asunto || !mensaje || !tipoAviso) {
     return res.status(400).json({ error: 'Faltan asunto, mensaje o tipoAviso' });
   }
@@ -108,6 +109,9 @@ router.post('/', permitir('responsable'), async (req, res) => {
   }
   if (!DESTINOS.includes(destino)) {
     return res.status(400).json({ error: 'Destino no válido', opciones: DESTINOS });
+  }
+  if (typeof requiereConfirmacion !== 'boolean') {
+    return res.status(400).json({ error: 'requiereConfirmacion es true o false' });
   }
 
   const where = {
@@ -140,7 +144,9 @@ router.post('/', permitir('responsable'), async (req, res) => {
       asunto,
       mensaje,
       tipoAviso,
+      requiereConfirmacion,
       autorId: req.usuario.id,
+      estanciaId: req.usuario.estanciaId, // el aviso es de su estancia
       lecturas: { create: destinatarios.map((d) => ({ usuarioId: d.id })) },
     },
     include: { ...conAutor, lecturas: true },

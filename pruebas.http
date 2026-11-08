@@ -28,7 +28,7 @@ Content-Type: application/json
 GET {{base}}/perfil
 Authorization: Bearer {{empleada}}
 
-### 5. Catálogos para los menús (roles, puestos, turnos, causas de baja)
+### 5. Catálogos para los menús (roles, puestos, turnos, causas de baja, motivos de ausencia)
 GET {{base}}/catalogos
 Authorization: Bearer {{empleada}}
 
@@ -70,6 +70,17 @@ Authorization: Bearer {{empleada}}
 
 ### 13. Confirmar lectura del aviso 1
 POST {{base}}/avisos/1/lectura
+Authorization: Bearer {{empleada}}
+
+### 48. Pedir corrección de la hora de un registro (queda pendiente hasta que la Responsable la aprueba)
+POST {{base}}/correcciones
+Authorization: Bearer {{empleada}}
+Content-Type: application/json
+
+{ "registroId": 1, "fechaHoraEntrada": "2026-11-05T07:00:00-06:00", "motivo": "Llegué a tiempo pero no tenía señal" }
+
+### 49. Mis correcciones
+GET {{base}}/correcciones
 Authorization: Bearer {{empleada}}
 
 ### ═══════════════ Responsable ═══════════════
@@ -147,14 +158,22 @@ Content-Type: application/json
 GET {{base}}/registros
 Authorization: Bearer {{responsable}}
 
-### 27. Corregir un registro (horas en ISO 8601; "fechaHoraSalida": null la quita)
+### 50. Correcciones pendientes de la estancia (?estado=pendiente|aprobada|rechazada)
+GET {{base}}/correcciones?estado=pendiente
+Authorization: Bearer {{responsable}}
+
+### 51. Aprobar la corrección 1 (cambia la hora del registro; /rechazar la deja igual)
+POST {{base}}/correcciones/1/aprobar
+Authorization: Bearer {{responsable}}
+
+### 27. Corregir un registro directamente (horas en ISO 8601; "fechaHoraSalida": null la quita). Queda como corrección aprobada.
 PUT {{base}}/registros/1
 Authorization: Bearer {{responsable}}
 Content-Type: application/json
 
-{ "fechaHoraEntrada": "2026-11-05T07:02:00-06:00" }
+{ "fechaHoraEntrada": "2026-11-05T07:02:00-06:00", "motivo": "Revisé la cámara de la entrada" }
 
-### 28. Marcar falta o incidencia (estado: presente | retardo | falta | incidencia; motivo: enfermedad | permiso | personal | transporte | otro)
+### 28. Marcar falta o incidencia (estado: presente | retardo | falta | incidencia; motivo o motivoId de GET /catalogos)
 POST {{base}}/asistencias
 Authorization: Bearer {{responsable}}
 Content-Type: application/json
@@ -177,7 +196,8 @@ Content-Type: application/json
   "asunto": "Cierre anticipado por lluvia",
   "mensaje": "Hoy cerramos a las 13:00. Entreguen a las niñas y niños desde las 12:30.",
   "tipoAviso": "urgente",
-  "destino": "todos"
+  "destino": "todos",
+  "requiereConfirmacion": true
 }
 
 ### 31. Avisos enviados con "1 de 7 confirmaron"
@@ -251,6 +271,17 @@ Authorization: Bearer {{direccion}}
 Content-Type: application/json
 
 { "nombre": "Psicóloga" }
+
+### 52. Agregar un motivo de ausencia al catálogo
+POST {{base}}/catalogos/motivos-ausencia
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "descripcion": "cita medica" }
+
+### 53. Auditoría: quién cambió registros, asistencias y correcciones (?tabla=asistencia&desde=&hasta=)
+GET {{base}}/auditoria
+Authorization: Bearer {{direccion}}
 
 ### ═══════════════ Errores ═══════════════
 

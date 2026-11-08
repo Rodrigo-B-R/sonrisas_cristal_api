@@ -1,7 +1,8 @@
-# Prende la API en Docker. La base de datos se prende aparte con el repo sonrisas_cristal_db.
-#   docker compose up -d --build
-# Toma las variables de .env. Si la base está en Docker en tu misma compu,
-# en DATABASE_URL usa host.docker.internal en lugar de localhost.
+# Prende la API en Docker, en la misma red que la base del repo sonrisas_cristal_db.
+#   1. Prende primero la base:  (en sonrisas_cristal_db)  docker compose up -d --build
+#   2. Luego la API:            (aquí)                    docker compose up -d --build
+# Toma las variables de .env. En DATABASE_URL el host es "postgres" (el nombre de la base en la red):
+#   postgresql://api_user:<API_DB_PASSWORD>@postgres:5432/sonrisas_cristal
 services:
   api:
     build: .
@@ -13,6 +14,10 @@ services:
       PORT: 3000
     ports:
       - "${API_PORT:-3000}:3000"
-    extra_hosts:
-      # Para que host.docker.internal también funcione en Linux
-      - "host.docker.internal:host-gateway"
+    networks:
+      - sonrisas_net
+
+# La red la crea el docker-compose de sonrisas_cristal_db; aquí solo nos unimos a ella.
+networks:
+  sonrisas_net:
+    external: true

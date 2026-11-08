@@ -53,6 +53,7 @@ async function cargarDatos(wherePersonas, desde, hasta) {
   const [asistencias, registros] = await Promise.all([
     prisma.asistencia.findMany({
       where: { usuarioId: { in: ids }, fecha: { gte: aFechaDb(desde), lte: aFechaDb(hasta) } },
+      include: { motivo: true },
     }),
     prisma.registroEntrada.findMany({
       where: { usuarioId: { in: ids }, fechaHoraEntrada: { gte: inicioDelDia(desde), lte: finDelDia(hasta) } },
@@ -112,7 +113,8 @@ function calcularDia(persona, fecha, datos) {
     salida: ultimo?.fechaHoraSalida ? horaLocal(ultimo.fechaHoraSalida) : null,
     dentroDeZona: registros.every((r) => r.dentroDeZona),
     estado,
-    motivo: asistencia?.motivo ?? null,
+    motivo: asistencia?.motivo?.descripcion ?? null,
+    motivoId: asistencia?.motivoId ?? null,
     asistenciaId: asistencia?.id ?? null,
     minutosRetardo: estado === 'retardo' ? minutosRetardo : 0,
   };

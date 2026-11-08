@@ -42,6 +42,15 @@ model CausaBaja {
   @@map("causa_baja")
 }
 
+// enfermedad, permiso, personal, transporte, otro (falta e incidencia lo exigen)
+model MotivoAusencia {
+  id          Int          @id @default(autoincrement())
+  descripcion String       @unique(map: "motivo_ausencia_descripcion_key") @db.VarChar(255)
+  asistencias Asistencia[]
+
+  @@map("motivo_ausencia")
+}
+
 // matutino 07:00-15:00, vespertino 12:00-20:00
 model Turno {
   id          Int               @id @default(autoincrement())
@@ -77,6 +86,7 @@ model Estancia {
   salas              Sala[]
   personal           Usuario[]
   asistencias        Asistencia[]
+  avisos             Aviso[]
   movimientosOrigen  MovimientoUsuario[] @relation("estancia_origen")
   movimientosDestino MovimientoUsuario[] @relation("estancia_destino")
 
@@ -100,8 +110,8 @@ model Sala {
 model Usuario {
   id         Int     @id @default(autoincrement())
   nombre     String  @db.VarChar(255)
-  password   String  @map("contraseña") @db.VarChar(255) // hash de bcrypt, nunca el texto
-  clave      String  @unique(map: "usuario_clave_unica") @db.VarChar(255)
+  password   String  @map("password_hash") @db.VarChar(255) // hash de bcrypt, nunca el texto
+  clave      String  @unique(map: "usuario_clave_unica") @map("usuario_login") @db.VarChar(255) // con lo que inicia sesión
   correo     String  @unique(map: "usuario_correo_unico") @db.VarChar(255)
   celular    String  @db.VarChar(255)
   estaActivo Boolean @map("esta_activo")
@@ -113,15 +123,18 @@ model Usuario {
   puesto   Puesto   @relation(fields: [puestoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   estancia Estancia @relation(fields: [estanciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  horarios          Horario[]
-  avisosEnviados    Aviso[]
-  avisosRecibidos   AvisoUsuario[]
-  registros         RegistroEntrada[]   @relation("registro_de")
-  registrosHechos   RegistroEntrada[]   @relation("registro_hecho_por")
-  asistencias       Asistencia[]        @relation("asistencia_de")
-  asistenciasHechas Asistencia[]        @relation("asistencia_hecha_por")
-  movimientos       MovimientoUsuario[] @relation("movimiento_de")
-  movimientosHechos MovimientoUsuario[] @relation("movimiento_hecho_por")
+  horarios              Horario[]
+  avisosEnviados        Aviso[]
+  avisosRecibidos       AvisoUsuario[]
+  registros             RegistroEntrada[]    @relation("registro_de")
+  registrosHechos       RegistroEntrada[]    @relation("registro_hecho_por")
+  asistencias           Asistencia[]         @relation("asistencia_de")
+  asistenciasHechas     Asistencia[]         @relation("asistencia_hecha_por")
+  movimientos           MovimientoUsuario[]  @relation("movimiento_de")
+  movimientosHechos     MovimientoUsuario[]  @relation("movimiento_hecho_por")
+  correccionesPedidas   CorreccionRegistro[] @relation("correccion_pedida_por")
+  correccionesResueltas CorreccionRegistro[] @relation("correccion_resuelta_por")
+  auditoria             Auditoria[]
 
   @@map("usuario")
 }
@@ -150,13 +163,16 @@ model MovimientoUsuario {
 // ── Avisos ───────────────────────────────────────────────────────────
 
 model Aviso {
-  id        Int            @id @default(autoincrement())
-  asunto    String         @db.VarChar(255)
-  tipoAviso String         @map("tipo_aviso") @db.VarChar(255)
-  mensaje   String         @db.VarChar(255)
-  autorId   Int            @map("id_usuario_envia")
-  autor     Usuario        @relation(fields: [autorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  lecturas  AvisoUsuario[]
+  id                   Int            @id @default(autoincrement())
+  asunto               String         @db.VarChar(255)
+  tipoAviso            String         @map("tipo_aviso") @db.VarChar(255)
+  mensaje              String         @db.VarChar(255)
+  requiereConfirmacion Boolean        @default(false) @map("requiere_confirmacion") // true: cada quien debe confirmar que lo leyó
+  autorId              Int            @map("id_usuario_envia")
+  estanciaId           Int?           @map("id_estancia") // null = aviso general
+  autor                Usuario        @relation(fields: [autorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estancia             Estancia?      @relation(fields: [estanciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lecturas             AvisoUsuario[]
 
   @@map("aviso")
 }
@@ -219,11 +235,12 @@ model RegistroEntrada {
   salaId           Int       @map("id_sala")
   turnoId          Int       @map("id_turno")
 
-  usuario       Usuario   @relation("registro_de", fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  registradoPor Usuario   @relation("registro_hecho_por", fields: [registradoPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  ubicacion     Ubicacion @relation(fields: [ubicacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  sala          Sala      @relation(fields: [salaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  turno         Turno     @relation(fields: [turnoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario       Usuario              @relation("registro_de", fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  registradoPor Usuario              @relation("registro_hecho_por", fields: [registradoPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ubicacion     Ubicacion            @relation(fields: [ubicacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sala          Sala                 @relation(fields: [salaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  turno         Turno                @relation(fields: [turnoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  correcciones  CorreccionRegistro[]
 
   @@map("registro_entradas")
 }
@@ -233,15 +250,55 @@ model Asistencia {
   id              Int      @id @default(autoincrement())
   fecha           DateTime @db.Date
   estado          String   @db.VarChar(255)
-  motivo          String?  @db.VarChar(255) // obligatorio en falta e incidencia
+  motivoId        Int?     @map("id_motivo_ausencia") // obligatorio en falta e incidencia
   usuarioId       Int      @map("id_usuario_que_asistio")
   registradoPorId Int      @map("id_usuario_registro")
   estanciaId      Int      @map("id_estancia")
 
-  usuario       Usuario  @relation("asistencia_de", fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  registradoPor Usuario  @relation("asistencia_hecha_por", fields: [registradoPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  estancia      Estancia @relation(fields: [estanciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario       Usuario         @relation("asistencia_de", fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  registradoPor Usuario         @relation("asistencia_hecha_por", fields: [registradoPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estancia      Estancia        @relation(fields: [estanciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  motivo        MotivoAusencia? @relation(fields: [motivoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([usuarioId, estanciaId, fecha], map: "asistencia_unica")
   @@map("asistencia")
+}
+
+// Solicitud para corregir la hora de un registro: pendiente | aprobada | rechazada.
+// El registro no cambia hasta que se aprueba. Guarda las horas de antes y las propuestas.
+model CorreccionRegistro {
+  id               Int       @id @default(autoincrement())
+  registroId       Int       @map("id_registro_entrada")
+  solicitadaPorId  Int       @map("id_usuario_solicita")
+  entradaAnterior  DateTime  @map("entrada_anterior") @db.Timestamptz(0)
+  entradaPropuesta DateTime  @map("entrada_propuesta") @db.Timestamptz(0)
+  salidaAnterior   DateTime? @map("salida_anterior") @db.Timestamptz(0)
+  salidaPropuesta  DateTime? @map("salida_propuesta") @db.Timestamptz(0)
+  motivo           String    @db.VarChar(255)
+  estado           String    @default("pendiente") @db.VarChar(255)
+  resueltaPorId    Int?      @map("id_usuario_resuelve")
+  resueltaEn       DateTime? @map("resuelto_en") @db.Timestamptz(0)
+  creadaEn         DateTime  @default(now()) @map("creado_en") @db.Timestamptz(0)
+
+  registro      RegistroEntrada @relation(fields: [registroId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  solicitadaPor Usuario         @relation("correccion_pedida_por", fields: [solicitadaPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resueltaPor   Usuario?        @relation("correccion_resuelta_por", fields: [resueltaPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("correccion_registro")
+}
+
+// Historial de cambios en registro_entradas, asistencia y correccion_registro.
+// La llenan los triggers de la base; la API solo la lee (api_user no puede escribirla).
+model Auditoria {
+  id              Int      @id @default(autoincrement())
+  usuarioId       Int?     @map("id_usuario") // quién hizo el cambio (lo fija conAutor en src/prisma.js)
+  accion          String   @db.VarChar(255) // INSERT | UPDATE | DELETE
+  tabla           String   @db.VarChar(255)
+  registroId      Int      @map("id_registro")
+  datosAnteriores Json?    @map("datos_anteriores")
+  datosNuevos     Json?    @map("datos_nuevos")
+  creadoEn        DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  usuario         Usuario? @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("auditoria")
 }

@@ -47,8 +47,10 @@ app.use('/personal', verificarToken, require('./rutas/personal'));
 app.use('/movimientos', verificarToken, require('./rutas/movimientos'));
 app.use('/horarios', verificarToken, require('./rutas/horarios'));
 app.use('/registros', verificarToken, require('./rutas/registros'));
+app.use('/correcciones', verificarToken, require('./rutas/correcciones'));
 app.use('/asistencias', verificarToken, require('./rutas/asistencias'));
 app.use('/avisos', verificarToken, require('./rutas/avisos'));
+app.use('/auditoria', verificarToken, require('./rutas/auditoria'));
 // GET /cobertura, /resumen, /estadisticas, /exportar/asistencias
 // (cada ruta pide el token por su cuenta, para que una ruta inexistente dé 404 y no 401)
 app.use(require('./rutas/reportes'));
@@ -65,7 +67,7 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: 'El body no es JSON válido' });
   }
   if (err.code === 'P2002') {
-    return res.status(409).json({ error: 'Ya existe un registro con ese dato (clave o correo repetido)' });
+    return res.status(409).json({ error: 'Ya existe un registro con ese dato (por ejemplo, clave o correo repetido)' });
   }
   if (err.code === 'P2003') {
     return res.status(409).json({ error: 'No se puede: tiene datos relacionados' });

@@ -20,6 +20,7 @@ const {
   esDeMiEstancia,
   turnosDelDia,
   distanciaMetros,
+  conAutor,
 } = require('../utilidades');
 
 const router = express.Router();
@@ -111,7 +112,7 @@ async function registrarEntrada({ persona, fechaHora, body, registradoPorId, ori
     where: { id: persona.estanciaId },
     include: { ubicacion: true },
   });
-  return prisma.$transaction(async (tx) => {
+  return conAutor(registradoPorId, async (tx) => {
     const registro = await tx.registroEntrada.create({
       data: {
         uuid,
@@ -215,11 +216,13 @@ router.post('/salida', permitir('empleada', 'responsable'), async (req, res) => 
   const salida = segundos(fechaHora) === segundos(abierto.fechaHoraEntrada)
     ? new Date((segundos(abierto.fechaHoraEntrada) + 1) * 1000)
     : fechaHora;
-  const registro = await prisma.registroEntrada.update({
-    where: { id: abierto.id },
-    data: { fechaHoraSalida: salida },
-    include: incluir,
-  });
+  const registro = await conAutor(req.usuario.id, (tx) =>
+    tx.registroEntrada.update({
+      where: { id: abierto.id },
+      data: { fechaHoraSalida: salida },
+      include: incluir,
+    }),
+  );
   res.json(registro);
 });
 
@@ -259,28 +262,67 @@ router.post('/turno', permitir('responsable'), async (req, res) => {
   res.status(201).json({ registradas, omitidas });
 });
 
-// PUT /registros/:id  { fechaHoraEntrada?, fechaHoraSalida? }  (la Responsable corrige un registro)
+// PUT /registros/:id  { fechaHoraEntrada?, fechaHoraSalida?, motivo? }  (la Responsable corrige un registro)
+// Queda en correccion_registro como corrección aprobada por ella, con las horas de antes.
+// Si la corrección la pide la empleada, va por POST /correcciones y la Responsable la aprueba.
 router.put('/:id', permitir('responsable'), async (req, res) => {
   const id = Number(req.params.id);
   const registro = await prisma.registroEntrada.findUnique({ where: { id }, include: { usuario: true } });
   if (!registro || !esDeMiEstancia(req, registro.usuario)) {
     return res.status(404).json({ error: 'No encontrado' });
   }
-  const body = req.body ?? {};
-  const entrada = body.fechaHoraEntrada === undefined ? registro.fechaHoraEntrada : leerFechaHora(body.fechaHoraEntrada);
-  const salida = body.fechaHoraSalida === undefined ? registro.fechaHoraSalida : leerFechaHora(body.fechaHoraSalida);
-  if (!entrada || (body.fechaHoraSalida !== undefined && body.fechaHoraSalida !== null && !salida)) {
-    return res.status(400).json({ error: 'Fechas no válidas (ISO 8601 y no del futuro)' });
+  const propuesta = leerCorreccion(registro, req.body ?? {});
+  if (propuesta.error) {
+    return res.status(400).json({ error: propuesta.error });
   }
-  if (salida && body.fechaHoraSalida !== null && segundos(salida) <= segundos(entrada)) {
-    return res.status(400).json({ error: 'La salida debe ser después de la entrada' });
-  }
-  const actualizado = await prisma.registroEntrada.update({
-    where: { id },
-    data: { fechaHoraEntrada: entrada, fechaHoraSalida: body.fechaHoraSalida === null ? null : salida },
-    include: incluir,
+  const actualizado = await conAutor(req.usuario.id, async (tx) => {
+    await tx.correccionRegistro.create({
+      data: {
+        ...propuesta.datos,
+        motivo: req.body?.motivo || 'Corregido por la Responsable',
+        solicitadaPorId: req.usuario.id,
+        estado: 'aprobada',
+        resueltaPorId: req.usuario.id,
+        resueltaEn: new Date(),
+      },
+    });
+    return tx.registroEntrada.update({
+      where: { id },
+      data: { fechaHoraEntrada: propuesta.datos.entradaPropuesta, fechaHoraSalida: propuesta.datos.salidaPropuesta },
+      include: incluir,
+    });
   });
   res.json(actualizado);
 });
 
+// Lee { fechaHoraEntrada?, fechaHoraSalida? } y arma la corrección: horas de antes y propuestas.
+// Lo que no venga se queda igual; "fechaHoraSalida": null quita la salida.
+// Regresa { datos } o { error }. También lo usa /correcciones.
+function leerCorreccion(registro, body) {
+  const entrada = body.fechaHoraEntrada === undefined ? registro.fechaHoraEntrada : leerFechaHora(body.fechaHoraEntrada);
+  let salida = registro.fechaHoraSalida;
+  if (body.fechaHoraSalida === null) salida = null;
+  else if (body.fechaHoraSalida !== undefined) salida = leerFechaHora(body.fechaHoraSalida);
+  if (!entrada || (body.fechaHoraSalida !== undefined && body.fechaHoraSalida !== null && !salida)) {
+    return { error: 'Fechas no válidas (ISO 8601 y no del futuro)' };
+  }
+  if (body.fechaHoraEntrada === undefined && body.fechaHoraSalida === undefined) {
+    return { error: 'Manda fechaHoraEntrada o fechaHoraSalida' };
+  }
+  if (salida && segundos(salida) <= segundos(entrada)) {
+    return { error: 'La salida debe ser después de la entrada' };
+  }
+  return {
+    datos: {
+      registroId: registro.id,
+      entradaAnterior: registro.fechaHoraEntrada,
+      salidaAnterior: registro.fechaHoraSalida,
+      entradaPropuesta: entrada,
+      salidaPropuesta: salida,
+    },
+  };
+}
+
 module.exports = router;
+module.exports.leerCorreccion = leerCorreccion;
+module.exports.incluirRegistro = incluir;

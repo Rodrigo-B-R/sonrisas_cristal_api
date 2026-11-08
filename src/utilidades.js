@@ -5,9 +5,10 @@ const prisma = require('./prisma');
 // Valores que aceptan las restricciones CHECK de 01-init.sql
 const ROLES = ['empleada', 'responsable', 'direccion'];
 const ESTADOS_ASISTENCIA = ['presente', 'retardo', 'falta', 'incidencia'];
-const MOTIVOS_ASISTENCIA = ['enfermedad', 'permiso', 'personal', 'transporte', 'otro'];
 const TIPOS_AVISO = ['cambio_horario', 'reunion', 'recordatorio', 'urgente'];
 const DIAS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+
+const ESTADOS_CORRECCION = ['pendiente', 'aprobada', 'rechazada'];
 
 // Un horario sin fecha de fin se guarda hasta esta fecha (vigente_hasta no acepta NULL)
 const SIN_FIN = '2099-12-31';
@@ -154,6 +155,17 @@ function passwordTemporal() {
   return texto;
 }
 
+// Auditoría: los triggers de registro_entradas, asistencia y correccion_registro
+// guardan en la tabla auditoria quién hizo cada cambio, leyendo app.id_usuario.
+// Todo lo que escriba en esas tablas va dentro de conAutor:
+//   await conAutor(req.usuario.id, (tx) => tx.asistencia.create({ ... }))
+// set_config(..., true) es lo mismo que SET LOCAL: solo vale dentro de esta transacción.
+const conAutor = (usuarioId, trabajo) =>
+  prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.id_usuario', ${String(usuarioId)}, true)`;
+    return trabajo(tx);
+  });
+
 // Distancia en metros entre dos puntos (fórmula de haversine)
 function distanciaMetros(lat1, lon1, lat2, lon2) {
   const rad = (g) => (g * Math.PI) / 180;
@@ -166,8 +178,8 @@ function distanciaMetros(lat1, lon1, lat2, lon2) {
 module.exports = {
   ROLES,
   ESTADOS_ASISTENCIA,
-  MOTIVOS_ASISTENCIA,
   TIPOS_AVISO,
+  ESTADOS_CORRECCION,
   DIAS,
   SIN_FIN,
   fechaLocal,
@@ -196,4 +208,5 @@ module.exports = {
   revisarPassword,
   passwordTemporal,
   distanciaMetros,
+  conAutor,
 };

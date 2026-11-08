@@ -12,6 +12,7 @@ const FECHA_ALTA = '2025-01-12';
 const ROLES = ['empleada', 'responsable', 'direccion'];
 const PUESTOS = ['Dirección', 'Responsable de estancia', 'Maestra titular', 'Asistente', 'Auxiliar', 'Cocina', 'Intendencia'];
 const CAUSAS_BAJA = ['Renuncia', 'Fin de contrato', 'Abandono de trabajo', 'Otro'];
+const MOTIVOS_AUSENCIA = ['enfermedad', 'permiso', 'personal', 'transporte', 'otro'];
 const TURNOS = [
   ['matutino', '07:00', '15:00'],
   ['vespertino', '12:00', '20:00'],
@@ -58,6 +59,7 @@ async function main() {
   for (const nombre of ROLES) rol[nombre] = await buscarOCrear('rol', { nombre });
   const puesto = {};
   for (const nombre of PUESTOS) puesto[nombre] = await buscarOCrear('puesto', { nombre });
+  for (const descripcion of MOTIVOS_AUSENCIA) await buscarOCrear('motivoAusencia', { descripcion });
   for (const nombre of CAUSAS_BAJA) await buscarOCrear('causaBaja', { nombre });
   const turno = {};
   for (const [nombre, entrada, salida] of TURNOS) {
@@ -152,6 +154,7 @@ async function main() {
         mensaje: 'A partir de hoy registramos entrada y salida desde el celular. Cualquier duda, con Marisol.',
         tipoAviso: 'recordatorio',
         autorId: marisol.id,
+        estanciaId: cumbres.id,
         lecturas: { create: empleadas.map((e) => ({ usuarioId: e.id })) },
       },
     });
