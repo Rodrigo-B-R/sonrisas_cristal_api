@@ -1,0 +1,1305 @@
+{
+  "info": {
+    "name": "Sonrisas de Cristal API",
+    "description": "Corre primero la carpeta \"0. Inicia sesión primero\": guarda los tokens de los 3 roles solos.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "password",
+      "value": "Cristal2026"
+    },
+    {
+      "key": "empleada",
+      "value": ""
+    },
+    {
+      "key": "responsable",
+      "value": ""
+    },
+    {
+      "key": "direccion",
+      "value": ""
+    },
+    {
+      "key": "metrics",
+      "value": "cambia-esto-por-otro-texto-secreto"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Inicia sesión primero",
+      "item": [
+        {
+          "name": "Login empleada (ana.torres) - guarda el token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login correcto (200)', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('empleada', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clave\": \"ana.torres\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{base}}/login"
+          }
+        },
+        {
+          "name": "Login responsable (marisol.garcia) - guarda el token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login correcto (200)', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('responsable', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clave\": \"marisol.garcia\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{base}}/login"
+          }
+        },
+        {
+          "name": "Login direccion (direccion) - guarda el token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login correcto (200)', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('direccion', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clave\": \"direccion\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{base}}/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "General",
+      "item": [
+        {
+          "name": "1. ¿Está viva?",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sesión",
+      "item": [
+        {
+          "name": "3. Mi perfil",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/perfil",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Catálogos para los menús (roles, puestos, turnos, causas de baja, motivos de ausencia)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/catalogos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Empleada",
+      "item": [
+        {
+          "name": "6. Pantalla Checar: ¿estoy dentro? ¿qué turno tengo hoy? ¿dónde está la estancia?",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/registros/estado",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "7. Registrar entrada (con ubicación del celular; si no tiene horario hoy, manda salaId y turnoId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/registros/entrada",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"latitud\": 25.7447, \"longitud\": -100.4036, \"salaId\": 2, \"turnoId\": 1 }"
+            }
+          }
+        },
+        {
+          "name": "8. Registrar salida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/registros/salida",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "9. Mis registros de esta semana (o ?desde=2026-11-01&hasta=2026-11-30)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/registros",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "10. Mis asistencias (esta semana; o ?desde=2026-10-01&hasta=2026-10-31)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/asistencias",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "11. Mi horario (hoy; o ?fecha=2026-12-01)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/horarios",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "12. Mis avisos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/avisos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "13. Confirmar lectura del aviso 1",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base}}/avisos/1/lectura",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "48. Pedir corrección de la hora de un registro (queda pendiente hasta que la Responsable la aprueba)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/correcciones",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"registroId\": 1, \"fechaHoraEntrada\": \"2026-11-05T07:00:00-06:00\", \"motivo\": \"Llegué a tiempo pero no tenía señal\" }"
+            }
+          }
+        },
+        {
+          "name": "49. Mis correcciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/correcciones",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Responsable",
+      "item": [
+        {
+          "name": "14. Inicio: presentes y salas bajo el mínimo (hoy, o ?fecha=2026-11-04)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/cobertura",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "15. Asistencia de la estancia (esta semana)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/asistencias",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "16. Personal activo (?activo=false para bajas, ?activo=todos)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/personal",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "17. Perfil de una persona (con horario vigente e historial)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/personal/3",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "18. Alta de personal -> 201 con passwordTemporal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/personal",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"nombre\": \"Marta Gil Soto\", \"clave\": \"marta.gil\", \"correo\": \"marta.gil@correo.com\", \"celular\": \"81 5555 0000\", \"puestoId\": 5 }"
+            }
+          }
+        },
+        {
+          "name": "19. Editar datos (el id de Marta sale en la respuesta del alta)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/personal/10",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"celular\": \"81 5555 1111\" }"
+            }
+          }
+        },
+        {
+          "name": "20. Restablecer contraseña -> nueva temporal",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base}}/personal/10/password",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "21. Editar la semana de una persona (día que no venga = descanso). Crea un horario nuevo desde hoy.",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/horarios/10",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dias\": [\n    { \"dia\": \"lunes\", \"turnoId\": 1, \"salaId\": 1 },\n    { \"dia\": \"martes\", \"turnoId\": 1, \"salaId\": 1 },\n    { \"dia\": \"miercoles\", \"turnoId\": 2, \"salaId\": 2 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "22. Horarios de la estancia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/horarios",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "23. Dar de baja (causaBajaId sale de GET /catalogos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/personal/10/baja",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"causaBajaId\": 1, \"observaciones\": \"Se cambió de ciudad\" }"
+            }
+          }
+        },
+        {
+          "name": "24. Historial de altas, bajas y traslados (este mes; ?tipo=baja)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/movimientos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "25. Entrada de turno completo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/registros/turno",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"usuarioIds\": [4, 6, 9], \"salaId\": 1, \"turnoId\": 1 }"
+            }
+          }
+        },
+        {
+          "name": "26. Registros de la estancia (?dentroDeZona=false para ver los de fuera de zona)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/registros",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "50. Correcciones pendientes de la estancia (?estado=pendiente|aprobada|rechazada)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/correcciones?estado=pendiente",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "51. Aprobar la corrección 1 (cambia la hora del registro; /rechazar la deja igual)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base}}/correcciones/1/aprobar",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "27. Corregir un registro directamente (horas en ISO 8601; \"fechaHoraSalida\": null la quita). Queda como corrección aprobada.",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/registros/1",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"fechaHoraEntrada\": \"2026-11-05T07:02:00-06:00\", \"motivo\": \"Revisé la cámara de la entrada\" }"
+            }
+          }
+        },
+        {
+          "name": "28. Marcar falta o incidencia (estado: presente | retardo | falta | incidencia; motivo o motivoId de GET /catalogos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/asistencias",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"usuarioId\": 5, \"fecha\": \"2026-11-04\", \"estado\": \"falta\", \"motivo\": \"enfermedad\" }"
+            }
+          }
+        },
+        {
+          "name": "29. Corregir una asistencia (el id sale en la respuesta anterior)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/asistencias/1",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"estado\": \"incidencia\", \"motivo\": \"transporte\" }"
+            }
+          }
+        },
+        {
+          "name": "30. Nuevo aviso (tipoAviso: cambio_horario | reunion | recordatorio | urgente; destino: todos | turno | sala | personas)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/avisos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asunto\": \"Cierre anticipado por lluvia\",\n  \"mensaje\": \"Hoy cerramos a las 13:00. Entreguen a las niñas y niños desde las 12:30.\",\n  \"tipoAviso\": \"urgente\",\n  \"destino\": \"todos\",\n  \"requiereConfirmacion\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "31. Avisos enviados con \"1 de 7 confirmaron\"",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/avisos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "32. Estado de lectura de un aviso",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/avisos/1",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "33. Salas y mínimos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/salas",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "34. Cambiar el mínimo de una sala",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/salas/4",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"minimoPersonal\": 5 }"
+            }
+          }
+        },
+        {
+          "name": "35. Agregar sala",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/salas",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"nombre\": \"Maternal C\", \"minimoPersonal\": 2 }"
+            }
+          }
+        },
+        {
+          "name": "36. Exportar CSV de asistencias (este mes, o ?desde=&hasta=)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/exportar/asistencias",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{responsable}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dirección",
+      "item": [
+        {
+          "name": "37. Resumen de todas las estancias",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/resumen",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "38. Estadísticas (este mes; o ?desde=2026-01-01&hasta=2026-12-31&estanciaId=1)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/estadisticas",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "39. Estancias con ubicación y salas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/estancias",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "40. Crear estancia (precision = radio en metros para \"dentro de zona\")",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/estancias",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"nombre\": \"Santa Catarina\", \"latitud\": 25.6733, \"longitud\": -100.4589, \"precision\": 150 }"
+            }
+          }
+        },
+        {
+          "name": "41. Dar de alta a una Responsable en otra estancia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/personal",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"nombre\": \"Laura Paz\", \"clave\": \"laura.paz\", \"correo\": \"laura.paz@correo.com\", \"celular\": \"81 5555 2222\", \"puestoId\": 2, \"rol\": \"responsable\", \"estanciaId\": 2 }"
+            }
+          }
+        },
+        {
+          "name": "42. Trasladar a una persona a otra estancia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/personal/7/traslado",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"estanciaId\": 2, \"observaciones\": \"Cubre vacante\" }"
+            }
+          }
+        },
+        {
+          "name": "43. Agregar un puesto al catálogo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/catalogos/puestos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"nombre\": \"Psicóloga\" }"
+            }
+          }
+        },
+        {
+          "name": "52. Agregar un motivo de ausencia al catálogo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/catalogos/motivos-ausencia",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"descripcion\": \"cita medica\" }"
+            }
+          }
+        },
+        {
+          "name": "53. Auditoría: quién cambió registros, asistencias y correcciones (?tabla=asistencia&desde=&hasta=)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/auditoria",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "54. Aviso general a todas las estancias (sin estanciaId; con \"estanciaId\": 2 va solo a esa estancia)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/avisos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"asunto\": \"Día festivo\", \"mensaje\": \"El lunes no hay servicio en ninguna estancia.\", \"tipoAviso\": \"recordatorio\", \"requiereConfirmacion\": true }"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Monitoreo",
+      "item": [
+        {
+          "name": "55. Métricas para Prometheus (si METRICS_TOKEN está en .env, la variable metrics debe ser igual)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/metrics",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{metrics}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Errores",
+      "item": [
+        {
+          "name": "44. Sin token -> 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/personal",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "45. Empleada en ruta de responsable -> 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/personal",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contraseña (ida y vuelta)",
+      "item": [
+        {
+          "name": "46. Cambiar mi contraseña",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/perfil/password",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"actual\": \"Cristal2026\", \"nueva\": \"Cristal2027\" }"
+            }
+          }
+        },
+        {
+          "name": "47. Regresarla a la original (para que los logins sigan funcionando)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/perfil/password",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{empleada}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"actual\": \"Cristal2027\", \"nueva\": \"Cristal2026\" }"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

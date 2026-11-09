@@ -1,0 +1,20 @@
+# Prende primero la base (sonrisas_cristal_db). En .env:
+#   DATABASE_URL="postgresql://api_user:<API_DB_PASSWORD>@postgres:5432/sonrisas_cristal"
+services:
+  api:
+    build: .
+    image: sonrisas-cristal-api
+    container_name: sonrisas_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    networks:
+      - sonrisas_net
+
+# La crea el docker-compose de sonrisas_cristal_db
+networks:
+  sonrisas_net:
+    external: true

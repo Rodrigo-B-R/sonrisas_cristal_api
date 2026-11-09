@@ -1,0 +1,322 @@
+### Pruebas para la extensión REST Client de VS Code (lo mismo está en sonrisas_cristal.postman_collection.json)
+### Cambia @base por la URL de Render cuando la despliegues.
+### Cuentas del seed (contraseña = SEED_PASSWORD, por defecto Cristal2026):
+###   ana.torres (empleada) · marisol.garcia (responsable de Cumbres) · direccion
+### Los id de los ejemplos son los que deja `npm run seed` en una base nueva:
+###   estancia 1 = Cumbres · salas 1 Lactantes, 2 Maternal A, 3 Maternal B, 4 Preescolar
+###   turnos 1 matutino, 2 vespertino · usuarios 3 ana.torres ... 9 maria.lopez · puesto 5 Auxiliar · causa de baja 1 Renuncia
+
+@base = http://localhost:8000
+
+### 1. ¿Está viva?
+GET {{base}}/
+
+### 2. Login (copia el token de la respuesta en la variable del rol)
+POST {{base}}/login
+Content-Type: application/json
+
+{ "clave": "marisol.garcia", "password": "Cristal2026" }
+
+###
+@empleada = PEGA_AQUI_EL_TOKEN_DE_ana.torres
+@responsable = PEGA_AQUI_EL_TOKEN_DE_marisol.garcia
+@direccion = PEGA_AQUI_EL_TOKEN_DE_direccion
+
+### ═══════════════ Sesión ═══════════════
+
+### 3. Mi perfil
+GET {{base}}/perfil
+Authorization: Bearer {{empleada}}
+
+### 5. Catálogos para los menús (roles, puestos, turnos, causas de baja, motivos de ausencia)
+GET {{base}}/catalogos
+Authorization: Bearer {{empleada}}
+
+### ═══════════════ Empleada ═══════════════
+
+### 6. Pantalla Checar: ¿estoy dentro? ¿qué turno tengo hoy? ¿dónde está la estancia?
+GET {{base}}/registros/estado
+Authorization: Bearer {{empleada}}
+
+### 7. Registrar entrada (con ubicación del celular; si no tiene horario hoy, manda salaId y turnoId)
+POST {{base}}/registros/entrada
+Authorization: Bearer {{empleada}}
+Content-Type: application/json
+
+{ "latitud": 25.7447, "longitud": -100.4036, "salaId": 2, "turnoId": 1 }
+
+### 8. Registrar salida
+POST {{base}}/registros/salida
+Authorization: Bearer {{empleada}}
+Content-Type: application/json
+
+{}
+
+### 9. Mis registros de esta semana (o ?desde=2026-11-01&hasta=2026-11-30)
+GET {{base}}/registros
+Authorization: Bearer {{empleada}}
+
+### 10. Mis asistencias (esta semana; o ?desde=2026-10-01&hasta=2026-10-31)
+GET {{base}}/asistencias
+Authorization: Bearer {{empleada}}
+
+### 11. Mi horario (hoy; o ?fecha=2026-12-01)
+GET {{base}}/horarios
+Authorization: Bearer {{empleada}}
+
+### 12. Mis avisos
+GET {{base}}/avisos
+Authorization: Bearer {{empleada}}
+
+### 13. Confirmar lectura del aviso 1
+POST {{base}}/avisos/1/lectura
+Authorization: Bearer {{empleada}}
+
+### 48. Pedir corrección de la hora de un registro (queda pendiente hasta que la Responsable la aprueba)
+POST {{base}}/correcciones
+Authorization: Bearer {{empleada}}
+Content-Type: application/json
+
+{ "registroId": 1, "fechaHoraEntrada": "2026-11-05T07:00:00-06:00", "motivo": "Llegué a tiempo pero no tenía señal" }
+
+### 49. Mis correcciones
+GET {{base}}/correcciones
+Authorization: Bearer {{empleada}}
+
+### ═══════════════ Responsable ═══════════════
+
+### 14. Inicio: presentes y salas bajo el mínimo (hoy, o ?fecha=2026-11-04)
+GET {{base}}/cobertura
+Authorization: Bearer {{responsable}}
+
+### 15. Asistencia de la estancia (esta semana)
+GET {{base}}/asistencias
+Authorization: Bearer {{responsable}}
+
+### 16. Personal activo (?activo=false para bajas, ?activo=todos)
+GET {{base}}/personal
+Authorization: Bearer {{responsable}}
+
+### 17. Perfil de una persona (con horario vigente e historial)
+GET {{base}}/personal/3
+Authorization: Bearer {{responsable}}
+
+### 18. Alta de personal -> 201 con passwordTemporal
+POST {{base}}/personal
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "nombre": "Marta Gil Soto", "clave": "marta.gil", "correo": "marta.gil@correo.com", "celular": "81 5555 0000", "puestoId": 5 }
+
+### 19. Editar datos (el id de Marta sale en la respuesta del alta)
+PUT {{base}}/personal/10
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "celular": "81 5555 1111" }
+
+### 20. Restablecer contraseña -> nueva temporal
+POST {{base}}/personal/10/password
+Authorization: Bearer {{responsable}}
+
+### 21. Editar la semana de una persona (día que no venga = descanso). Crea un horario nuevo desde hoy.
+PUT {{base}}/horarios/10
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{
+  "dias": [
+    { "dia": "lunes", "turnoId": 1, "salaId": 1 },
+    { "dia": "martes", "turnoId": 1, "salaId": 1 },
+    { "dia": "miercoles", "turnoId": 2, "salaId": 2 }
+  ]
+}
+
+### 22. Horarios de la estancia
+GET {{base}}/horarios
+Authorization: Bearer {{responsable}}
+
+### 23. Dar de baja (causaBajaId sale de GET /catalogos)
+POST {{base}}/personal/10/baja
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "causaBajaId": 1, "observaciones": "Se cambió de ciudad" }
+
+### 24. Historial de altas, bajas y traslados (este mes; ?tipo=baja)
+GET {{base}}/movimientos
+Authorization: Bearer {{responsable}}
+
+### 25. Entrada de turno completo
+POST {{base}}/registros/turno
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "usuarioIds": [4, 6, 9], "salaId": 1, "turnoId": 1 }
+
+### 26. Registros de la estancia (?dentroDeZona=false para ver los de fuera de zona)
+GET {{base}}/registros
+Authorization: Bearer {{responsable}}
+
+### 50. Correcciones pendientes de la estancia (?estado=pendiente|aprobada|rechazada)
+GET {{base}}/correcciones?estado=pendiente
+Authorization: Bearer {{responsable}}
+
+### 51. Aprobar la corrección 1 (cambia la hora del registro; /rechazar la deja igual)
+POST {{base}}/correcciones/1/aprobar
+Authorization: Bearer {{responsable}}
+
+### 27. Corregir un registro directamente (horas en ISO 8601; "fechaHoraSalida": null la quita). Queda como corrección aprobada.
+PUT {{base}}/registros/1
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "fechaHoraEntrada": "2026-11-05T07:02:00-06:00", "motivo": "Revisé la cámara de la entrada" }
+
+### 28. Marcar falta o incidencia (estado: presente | retardo | falta | incidencia; motivo o motivoId de GET /catalogos)
+POST {{base}}/asistencias
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "usuarioId": 5, "fecha": "2026-11-04", "estado": "falta", "motivo": "enfermedad" }
+
+### 29. Corregir una asistencia (el id sale en la respuesta anterior)
+PUT {{base}}/asistencias/1
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "estado": "incidencia", "motivo": "transporte" }
+
+### 30. Nuevo aviso (tipoAviso: cambio_horario | reunion | recordatorio | urgente; destino: todos | turno | sala | personas)
+POST {{base}}/avisos
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{
+  "asunto": "Cierre anticipado por lluvia",
+  "mensaje": "Hoy cerramos a las 13:00. Entreguen a las niñas y niños desde las 12:30.",
+  "tipoAviso": "urgente",
+  "destino": "todos",
+  "requiereConfirmacion": true
+}
+
+### 31. Avisos enviados con "1 de 7 confirmaron"
+GET {{base}}/avisos
+Authorization: Bearer {{responsable}}
+
+### 32. Estado de lectura de un aviso
+GET {{base}}/avisos/1
+Authorization: Bearer {{responsable}}
+
+### 33. Salas y mínimos
+GET {{base}}/salas
+Authorization: Bearer {{responsable}}
+
+### 34. Cambiar el mínimo de una sala
+PUT {{base}}/salas/4
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "minimoPersonal": 5 }
+
+### 35. Agregar sala
+POST {{base}}/salas
+Authorization: Bearer {{responsable}}
+Content-Type: application/json
+
+{ "nombre": "Maternal C", "minimoPersonal": 2 }
+
+### 36. Exportar CSV de asistencias (este mes, o ?desde=&hasta=)
+GET {{base}}/exportar/asistencias
+Authorization: Bearer {{responsable}}
+
+### ═══════════════ Dirección ═══════════════
+
+### 37. Resumen de todas las estancias
+GET {{base}}/resumen
+Authorization: Bearer {{direccion}}
+
+### 38. Estadísticas (este mes; o ?desde=2026-01-01&hasta=2026-12-31&estanciaId=1)
+GET {{base}}/estadisticas
+Authorization: Bearer {{direccion}}
+
+### 39. Estancias con ubicación y salas
+GET {{base}}/estancias
+Authorization: Bearer {{direccion}}
+
+### 40. Crear estancia (precision = radio en metros para "dentro de zona")
+POST {{base}}/estancias
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "nombre": "Santa Catarina", "latitud": 25.6733, "longitud": -100.4589, "precision": 150 }
+
+### 41. Dar de alta a una Responsable en otra estancia
+POST {{base}}/personal
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "nombre": "Laura Paz", "clave": "laura.paz", "correo": "laura.paz@correo.com", "celular": "81 5555 2222", "puestoId": 2, "rol": "responsable", "estanciaId": 2 }
+
+### 42. Trasladar a una persona a otra estancia
+POST {{base}}/personal/7/traslado
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "estanciaId": 2, "observaciones": "Cubre vacante" }
+
+### 43. Agregar un puesto al catálogo
+POST {{base}}/catalogos/puestos
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "nombre": "Psicóloga" }
+
+### 52. Agregar un motivo de ausencia al catálogo
+POST {{base}}/catalogos/motivos-ausencia
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "descripcion": "cita medica" }
+
+### 53. Auditoría: quién cambió registros, asistencias y correcciones (?tabla=asistencia&desde=&hasta=)
+GET {{base}}/auditoria
+Authorization: Bearer {{direccion}}
+
+### 54. Aviso general a todas las estancias (sin estanciaId; con "estanciaId": 2 va solo a esa estancia)
+POST {{base}}/avisos
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "asunto": "Día festivo", "mensaje": "El lunes no hay servicio en ninguna estancia.", "tipoAviso": "recordatorio", "requiereConfirmacion": true }
+
+### ═══════════════ Monitoreo ═══════════════
+
+### 55. Métricas para Prometheus (si METRICS_TOKEN está en .env, la variable metrics debe ser igual)
+GET {{base}}/metrics
+Authorization: Bearer {{metrics}}
+
+### ═══════════════ Errores ═══════════════
+
+### 44. Sin token -> 401
+GET {{base}}/personal
+
+### 45. Empleada en ruta de responsable -> 403
+GET {{base}}/personal
+Authorization: Bearer {{empleada}}
+
+### ═══════════════ Contraseña (ida y vuelta) ═══════════════
+
+### 46. Cambiar mi contraseña
+PUT {{base}}/perfil/password
+Authorization: Bearer {{empleada}}
+Content-Type: application/json
+
+{ "actual": "Cristal2026", "nueva": "Cristal2027" }
+
+### 47. Regresarla a la original (para que los logins sigan funcionando)
+PUT {{base}}/perfil/password
+Authorization: Bearer {{empleada}}
+Content-Type: application/json
+
+{ "actual": "Cristal2027", "nueva": "Cristal2026" }
