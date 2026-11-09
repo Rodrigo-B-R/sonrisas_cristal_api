@@ -6,7 +6,7 @@
 ###   estancia 1 = Cumbres · salas 1 Lactantes, 2 Maternal A, 3 Maternal B, 4 Preescolar
 ###   turnos 1 matutino, 2 vespertino · usuarios 3 ana.torres ... 9 maria.lopez · puesto 5 Auxiliar · causa de baja 1 Renuncia
 
-@base = http://localhost:3000
+@base = http://localhost:8000
 
 ### 1. ¿Está viva?
 GET {{base}}/
@@ -282,6 +282,19 @@ Content-Type: application/json
 ### 53. Auditoría: quién cambió registros, asistencias y correcciones (?tabla=asistencia&desde=&hasta=)
 GET {{base}}/auditoria
 Authorization: Bearer {{direccion}}
+
+### 54. Aviso general a todas las estancias (sin estanciaId; con "estanciaId": 2 va solo a esa estancia)
+POST {{base}}/avisos
+Authorization: Bearer {{direccion}}
+Content-Type: application/json
+
+{ "asunto": "Día festivo", "mensaje": "El lunes no hay servicio en ninguna estancia.", "tipoAviso": "recordatorio", "requiereConfirmacion": true }
+
+### ═══════════════ Monitoreo ═══════════════
+
+### 55. Métricas para Prometheus (si METRICS_TOKEN está en .env, la variable metrics debe ser igual)
+GET {{base}}/metrics
+Authorization: Bearer {{metrics}}
 
 ### ═══════════════ Errores ═══════════════
 

@@ -16,8 +16,8 @@ RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" npm ci
 COPY . .
 
 ENV NODE_ENV=production \
-    PORT=3000
-EXPOSE 3000
+    PORT=8000
+EXPOSE 8000
 
 USER node
 

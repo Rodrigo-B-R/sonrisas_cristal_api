@@ -8,20 +8,31 @@ const router = express.Router();
 const DESTINOS = ['todos', 'turno', 'sala', 'personas'];
 const conAutor = { autor: { select: { id: true, nombre: true, estanciaId: true } } };
 
-// Responsable: avisos que mandó alguien de su estancia. Dirección: todos o ?estanciaId=
+// Responsable: los de su estancia y los generales (estanciaId null). Dirección: todos o ?estanciaId=
 function filtroAvisos(req) {
   if (req.usuario.rol === 'direccion') {
-    return req.query.estanciaId ? { autor: { estanciaId: Number(req.query.estanciaId) } } : {};
+    return req.query.estanciaId ? { estanciaId: Number(req.query.estanciaId) } : {};
   }
-  return { autor: { estanciaId: req.usuario.estanciaId } };
+  return { OR: [{ estanciaId: req.usuario.estanciaId }, { estanciaId: null }] };
 }
 
-function conConteo({ lecturas, ...aviso }) {
+// De un aviso general, la Responsable solo ve las lecturas de su estancia
+const lecturasVisibles = (req) =>
+  req.usuario.rol === 'direccion' ? true : { where: { usuario: { estanciaId: req.usuario.estanciaId } } };
+
+// Conteo "9 de 14 confirmaron" y, si quien pregunta también lo recibió, su propia lectura
+function conConteo({ lecturas, ...aviso }, req) {
+  const mia = req && lecturas.find((l) => l.usuarioId === req.usuario.id);
   return {
     ...aviso,
     destinatarios: lecturas.length,
     confirmaron: lecturas.filter((l) => l.leido).length,
+    ...(mia && { leido: mia.leido, leidoEn: mia.leidoEn }),
   };
+}
+
+function puedeVer(req, aviso) {
+  return req.usuario.rol === 'direccion' || aviso.estanciaId === null || aviso.estanciaId === req.usuario.estanciaId;
 }
 
 const conHorarioHoy = (dias) => ({
@@ -40,10 +51,10 @@ router.get('/', async (req, res) => {
   }
   const avisos = await prisma.aviso.findMany({
     where: filtroAvisos(req),
-    include: { ...conAutor, lecturas: true },
+    include: { ...conAutor, lecturas: lecturasVisibles(req) },
     orderBy: { id: 'desc' },
   });
-  res.json(avisos.map(conConteo));
+  res.json(avisos.map((a) => conConteo(a, req)));
 });
 
 // GET /avisos/:id
@@ -54,7 +65,7 @@ router.get('/:id', async (req, res) => {
     include: {
       ...conAutor,
       lecturas: {
-        include: { usuario: { select: { id: true, nombre: true } } },
+        include: { usuario: { select: { id: true, nombre: true, estanciaId: true } } },
         orderBy: { leidoEn: 'asc' },
       },
     },
@@ -70,19 +81,23 @@ router.get('/:id', async (req, res) => {
     }
     return res.json({ ...datos, leido: mia.leido, leidoEn: mia.leidoEn });
   }
-  if (req.usuario.rol !== 'direccion' && aviso.autor.estanciaId !== req.usuario.estanciaId) {
+  if (!puedeVer(req, aviso)) {
     return res.status(404).json({ error: 'No encontrado' });
   }
+  const visibles =
+    req.usuario.rol === 'direccion' ? lecturas : lecturas.filter((l) => l.usuario.estanciaId === req.usuario.estanciaId);
+  const persona = ({ id, nombre }) => ({ id, nombre });
   res.json({
     ...datos,
-    destinatarios: lecturas.length,
-    confirmados: lecturas.filter((l) => l.leido).map((l) => ({ ...l.usuario, leidoEn: l.leidoEn })),
-    pendientes: lecturas.filter((l) => !l.leido).map((l) => l.usuario),
+    destinatarios: visibles.length,
+    confirmados: visibles.filter((l) => l.leido).map((l) => ({ ...persona(l.usuario), leidoEn: l.leidoEn })),
+    pendientes: visibles.filter((l) => !l.leido).map((l) => persona(l.usuario)),
   });
 });
 
 // POST /avisos  { asunto, mensaje, tipoAviso, destino: todos|turno|sala|personas, turnoId?, salaId?, usuarioIds?, requiereConfirmacion? }
-router.post('/', permitir('responsable'), async (req, res) => {
+//   Responsable: a su estancia. Dirección: a una estancia con estanciaId, o general (sin estanciaId) a todas.
+router.post('/', permitir('responsable', 'direccion'), async (req, res) => {
   const { asunto, mensaje, tipoAviso, destino = 'todos', turnoId, salaId, usuarioIds, requiereConfirmacion = false } =
     req.body ?? {};
   if (!asunto || !mensaje || !tipoAviso) {
@@ -101,11 +116,19 @@ router.post('/', permitir('responsable'), async (req, res) => {
     return res.status(400).json({ error: 'requiereConfirmacion es true o false' });
   }
 
+  let estanciaId = req.usuario.estanciaId;
+  if (req.usuario.rol === 'direccion') {
+    estanciaId = req.body.estanciaId == null ? null : Number(req.body.estanciaId);
+    if (estanciaId !== null && !(await prisma.estancia.findUnique({ where: { id: estanciaId || 0 } }))) {
+      return res.status(400).json({ error: 'Estancia no encontrada' });
+    }
+  }
+
   const where = {
     estaActivo: true,
-    estanciaId: req.usuario.estanciaId,
     id: { not: req.usuario.id },
     rol: { nombre: { not: 'direccion' } },
+    ...(estanciaId !== null && { estanciaId }),
   };
   if (destino === 'turno') {
     if (!turnoId) return res.status(400).json({ error: 'Falta turnoId' });
@@ -133,12 +156,12 @@ router.post('/', permitir('responsable'), async (req, res) => {
       tipoAviso,
       requiereConfirmacion,
       autorId: req.usuario.id,
-      estanciaId: req.usuario.estanciaId,
+      estanciaId, // null = general
       lecturas: { create: destinatarios.map((d) => ({ usuarioId: d.id })) },
     },
     include: { ...conAutor, lecturas: true },
   });
-  res.status(201).json(conConteo(aviso));
+  res.status(201).json(conConteo(aviso, req));
 });
 
 // POST /avisos/:id/lectura

@@ -8,9 +8,11 @@ if (!process.env.DATABASE_URL || !process.env.JWT_SECRET) {
 
 const express = require('express');
 const { verificarToken } = require('./middleware/auth');
+const { medir, exponer } = require('./metricas');
 
 const app = express();
 
+app.use(medir);
 app.use(express.json());
 
 // Las columnas DATE y TIME se responden cortas: "2026-11-04" y "07:00".
@@ -31,6 +33,9 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
   res.json({ mensaje: 'API de Sonrisas de Cristal funcionando' });
 });
+
+// Para Prometheus (protegido con METRICS_TOKEN si está en .env)
+app.get('/metrics', exponer);
 
 // POST /login, y con token: GET /perfil, PUT /perfil/password
 app.use(require('./rutas/sesion'));
@@ -79,7 +84,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno' });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 app.listen(PORT, (error) => {
   if (error) {
     console.error(

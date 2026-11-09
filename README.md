@@ -1,80 +1,68 @@
 # API Sonrisas de Cristal
 
-API REST para la app Android de Sonrisas de Cristal. Hecha con **Node.js, Express, Prisma y PostgreSQL**, con login por **JWT** y contraseñas cifradas con **bcrypt**.
+API REST para la app Android de Sonrisas de Cristal, con **Node.js, Express, Prisma y PostgreSQL**. Login con **JWT** y contraseñas con **bcrypt**.
 
-Usa la base de datos del repo [`sonrisas_cristal_db`](https://github.com/Rodrigo-B-R/sonrisas_cristal_db) (`init/01-init.sql`, 18 tablas).
+Usa la base del repo [`sonrisas_cristal_db`](https://github.com/Rodrigo-B-R/sonrisas_cristal_db) (`init/01-init.sql`).
 
-## Qué tiene
+## Rutas
 
-Tres roles, que salen de la tabla `rol`:
-
-- **empleada**: checa entrada y salida, ve su horario, sus asistencias y sus avisos, y pide correcciones de hora.
-- **responsable**: maneja su estancia: personal (altas, bajas, traslados), horarios, salas, asistencias, avisos, correcciones y reportes.
-- **direccion**: ve todas las estancias, crea estancias, da de alta Responsables y consulta la auditoría.
+Roles: **empleada**, **responsable** (su estancia) y **direccion** (todas).
 
 | Ruta | Para qué |
 |---|---|
-| `POST /login`, `GET /perfil` | Iniciar sesión y ver mi perfil |
+| `POST /login`, `GET /perfil` | Sesión y perfil |
 | `/catalogos` | Roles, puestos, turnos, causas de baja y motivos de ausencia |
-| `/estancias`, `/salas` | Estancias con ubicación, y salas con su mínimo de personal |
+| `/estancias`, `/salas` | Estancias, ubicación y mínimo de personal por sala |
 | `/personal`, `/movimientos` | Personal, altas, bajas y traslados |
-| `/horarios` | Horario semanal de cada persona |
-| `/registros` | Entradas y salidas (con ubicación y si está dentro de la zona) |
-| `/correcciones` | La empleada pide corregir una hora; la Responsable aprueba o rechaza |
-| `/asistencias` | Presente, retardo, falta o incidencia (con motivo del catálogo) |
-| `/avisos` | Avisos, si requieren confirmación y quién los leyó |
-| `/auditoria` | Quién cambió registros, asistencias y correcciones (dirección) |
+| `/horarios` | Horario semanal |
+| `/registros` | Entradas y salidas |
+| `/correcciones` | Pedir y aprobar correcciones de hora |
+| `/asistencias` | Presente, retardo, falta o incidencia |
+| `/avisos` | Avisos y confirmación de lectura (dirección puede mandar avisos generales) |
+| `/auditoria` | Quién cambió qué (dirección) |
 | `/cobertura`, `/resumen`, `/estadisticas`, `/exportar/asistencias` | Reportes y CSV |
+| `GET /metrics` | Métricas para Prometheus (con `METRICS_TOKEN`) |
 
-Todas las rutas, salvo `/` y `/login`, piden `Authorization: Bearer <token>`. Los ejemplos de cada una están en `pruebas.http` y en la colección de Postman.
-
-La auditoría la llena la base sola con triggers. La API le dice quién hace cada cambio (`conAutor` en `src/utilidades.js`).
+Todo pide `Authorization: Bearer <token>`, menos `/`, `/login` y `/metrics`. Hay ejemplos en `pruebas.http` y en la colección de Postman.
 
 ## Cómo prenderla
 
-Necesitas los repos `sonrisas_cristal_api` y `sonrisas_cristal_db` en la misma carpeta. Elige **una** de estas dos formas.
+Clona este repo y `sonrisas_cristal_db` en la misma carpeta. Luego copia `.env.example` como `.env`.
 
-### Opción A: con Render (sin Docker)
-
-Necesitas **Node.js 20.19+**.
-
-1. En Render crea un Postgres gratis y copia la *External Database URL*.
-2. Copia `.env.example` como `.env` y pon esa URL en `DATABASE_URL`, con `?sslmode=no-verify` al final.
-3. En PowerShell, uno por uno:
+**Con Render:** pon la *External Database URL* en `DATABASE_URL`, con `?sslmode=no-verify` al final. Después:
 
 ```powershell
 npm install
-npm run db:crear   # crea las tablas con ../sonrisas_cristal_db/init/01-init.sql (solo la primera vez)
+npm run db:crear   # tablas (solo la primera vez)
 npm run seed       # datos de prueba
-npm run dev        # API en http://localhost:3000
+npm run dev        # http://localhost:8000
 ```
 
-Para ver la base de datos: `npm run db:ver` (abre Prisma Studio).
+Para ver la base: `npm run db:ver`.
 
-### Opción B: con Docker
+**Con Docker:** primero prende la base con `docker compose up -d --build` en `sonrisas_cristal_db`. Luego, en `.env`, pon `DATABASE_URL="postgresql://api_user:<API_DB_PASSWORD>@postgres:5432/sonrisas_cristal"`. Después:
 
-La base de Docker no abre puertos en tu compu: solo se puede entrar desde la red `sonrisas_net`. Por eso la API también corre en Docker, dentro de esa red.
+```powershell
+docker compose up -d --build
+docker compose exec api npm run seed
+```
 
-1. Prende la base en `sonrisas_cristal_db` (`docker compose up -d --build`). Ahí las tablas se crean solas.
-2. Copia `.env.example` como `.env`. En `DATABASE_URL` usa el `API_DB_PASSWORD` del `.env` de la base:
-   ```
-   DATABASE_URL="postgresql://api_user:<API_DB_PASSWORD>@postgres:5432/sonrisas_cristal"
-   ```
-3. En esta carpeta:
-   ```powershell
-   docker compose up -d --build
-   docker compose exec api npm run seed   # datos de prueba, solo la primera vez
-   ```
-4. La API queda en http://localhost:3000. Para ver qué pasa: `docker compose logs -f api`. Para apagarla: `docker compose down`.
+**Cuentas de prueba** (contraseña `Cristal2026`): `ana.torres`, `marisol.garcia`, `direccion`.
 
-Para ver la base de datos con Docker, usa pgAdmin en http://localhost:5050.
+## Postman
 
-**Cuentas de prueba** (contraseña `Cristal2026`): `ana.torres` (empleada), `marisol.garcia` (responsable), `direccion`.
+Importa `sonrisas_cristal.postman_collection.json` (**Import → files**). Manda primero los 3 logins de **0. Inicia sesión primero** y luego prueba las demás carpetas.
 
-## Probar con Postman
+## Prometheus
 
-1. **Import** → **files** → elige `sonrisas_cristal.postman_collection.json`.
-2. Manda los 3 logins de la carpeta **0. Inicia sesión primero**. Los tokens se guardan solos.
-3. Prueba las demás carpetas, o corre todo con **Run collection**.
+Pon `METRICS_TOKEN` en el `.env` de la API (pídelo por privado, no se sube al repo). Prometheus debe estar en la red `sonrisas_net` y usar el mismo token:
 
-Los id de los ejemplos son los de una base recién creada con `npm run seed`. Si corres la colección otra vez, algunas peticiones dan **409** porque esos datos ya existen.
+```yaml
+scrape_configs:
+  - job_name: sonrisas_api
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /etc/prometheus/metrics_token   # archivo con el METRICS_TOKEN
+    static_configs:
+      - targets: ['sonrisas_api:8000']
+```

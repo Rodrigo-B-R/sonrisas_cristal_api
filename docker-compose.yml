@@ -8,9 +8,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      PORT: 3000
+      PORT: 8000
     ports:
-      - "${API_PORT:-3000}:3000"
+      - "${API_PORT:-8000}:8000"
     networks:
       - sonrisas_net
 

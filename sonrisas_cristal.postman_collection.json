@@ -7,7 +7,7 @@
   "variable": [
     {
       "key": "base",
-      "value": "http://localhost:3000"
+      "value": "http://localhost:8000"
     },
     {
       "key": "password",
@@ -24,6 +24,10 @@
     {
       "key": "direccion",
       "value": ""
+    },
+    {
+      "key": "metrics",
+      "value": "cambia-esto-por-otro-texto-secreto"
     }
   ],
   "item": [
@@ -1146,6 +1150,56 @@
                 {
                   "key": "token",
                   "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "54. Aviso general a todas las estancias (sin estanciaId; con \"estanciaId\": 2 va solo a esa estancia)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base}}/avisos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{direccion}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"asunto\": \"Día festivo\", \"mensaje\": \"El lunes no hay servicio en ninguna estancia.\", \"tipoAviso\": \"recordatorio\", \"requiereConfirmacion\": true }"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Monitoreo",
+      "item": [
+        {
+          "name": "55. Métricas para Prometheus (si METRICS_TOKEN está en .env, la variable metrics debe ser igual)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base}}/metrics",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{metrics}}",
                   "type": "string"
                 }
               ]
