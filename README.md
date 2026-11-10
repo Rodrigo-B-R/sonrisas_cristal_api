@@ -13,7 +13,7 @@ Roles: **employee**, **manager** (su daycare) y **director** (todas).
 
 | Ruta | Para qué | Antes (Node) |
 |---|---|---|
-| `POST /login`, `GET /profile`, `PUT /profile/password` | Sesión y perfil | `/login`, `/perfil` |
+| `POST /login`, `POST /logout`, `GET /profile`, `PUT /profile/password` | Sesión y perfil (`/logout` es nuevo) | `/login`, `/perfil` |
 | `/catalogs` | Roles, puestos, turnos, causas de baja y motivos de ausencia | `/catalogos` |
 | `/daycares`, `/rooms` | Estancias, ubicación y mínimo de personal por sala | `/estancias`, `/salas` |
 | `/staff`, `/movements` | Personal, altas, bajas (`/terminate`) y traslados (`/transfer`) | `/personal`, `/movimientos` |
@@ -36,6 +36,7 @@ Todo pide `Authorization: Bearer <token>`, menos `/`, `/login` y `/metrics`.
 - Los cuerpos con campos que la ruta no declara dan **400** (no hay *mass assignment*).
 - Errores de validación: `400` con `{"error": "Invalid data", "details": [{"in", "field", "message"}]}`.
 - `/metrics` queda apagado si no hay `METRICS_TOKEN` (antes quedaba abierto).
+- Nuevo: `POST /logout` cierra la sesión (el token deja de servir de inmediato).
 
 La documentación interactiva está en **`/docs`** y **`/redoc`** (solo con `ENVIRONMENT=development`). Hay ejemplos listos en `pruebas.http`.
 
@@ -90,14 +91,15 @@ uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 ## Seguridad
 
 - **El token solo dice *quién* eres.** El rol, el daycare y si sigues activo se leen de la base **en cada petición** (`get_current_user`). Una baja, un traslado o un cambio de rol aplican en la siguiente petición, sin esperar a que el token expire. Un `role` inventado dentro del token no sirve de nada, y solo se acepta HS256.
+- **Cierre de sesión:** cada token lleva un `jti` único (los que no lo traen se rechazan). `POST /logout` guarda el `jti` del token usado en una lista de revocados hasta la hora en que habría expirado, y desde ese momento da `401 Token revoked`. Cierra **solo esa sesión**: otro celular de la misma persona sigue abierto. Volver a llamarlo con el mismo token da 401.
 - **Permisos por rol** con dependencias, el equivalente de `Depends` que se usa en FastAPI: `ManagerOnly`, `DirectorOnly`, `ManagerOrDirector`... (`app/dependencies.py`). Lo de otro daycare responde **404**, no 403, para no confirmar que existe.
 - **Fuerza bruta en el login:** límite por IP (5/min), bloqueo de la cuenta tras 10 fallos en 15 min (responde `429` + `Retry-After`) y respuesta idéntica para usuario inexistente, contraseña mala o cuenta inactiva, también en tiempo.
 - **Detrás del túnel de Cloudflare** todas las peticiones llegan desde el contenedor del túnel; la IP real viene en `CF-Connecting-IP`. Esa cabecera solo se cree si la petición viene de `TRUSTED_PROXIES` (pon la subred de `sonrisas_net`: `docker network inspect sonrisas_net`). Sin eso, todos los usuarios compartirían un solo contador de 5 intentos por minuto. Ojo: si publicas el puerto 8000 en la PC, quien llegue directo por ahí también viene "de confianza"; el bloqueo por cuenta sigue protegiendo.
-- **Logs en JSON**, una línea por petición (`app.request`: id, método, ruta, status, ms, usuario, IP) y los eventos de seguridad en `app.security`: `login_failed`, `login_success`, `account_locked`, `login_locked`, `rate_limited`, `auth_*`, `access_denied` (403), `password_changed`, `password_reset`, `role_changed`, `staff_created`, `staff_terminated`, `staff_transferred`, `metrics_denied`. Nunca se escribe una contraseña ni un token. Cada respuesta trae `X-Request-ID` para encontrar su línea.
+- **Logs en JSON**, una línea por petición (`app.request`: id, método, ruta, status, ms, usuario, IP) y los eventos de seguridad en `app.security`: `login_failed`, `login_success`, `logout`, `account_locked`, `login_locked`, `rate_limited`, `auth_*`, `access_denied` (403), `password_changed`, `password_reset`, `role_changed`, `staff_created`, `staff_terminated`, `staff_transferred`, `metrics_denied`. Nunca se escribe una contraseña ni un token. Cada respuesta trae `X-Request-ID` para encontrar su línea.
 - **Auditoría en la base:** cada escritura en `registro_entradas`, `asistencia` y `correccion_registro` fija antes `app.id_usuario` (`set_audit_user`), así el trigger guarda quién la hizo. `api_user` no puede borrar ni escribir en `auditoria`.
 - Los datos de entrada se validan con Pydantic y las consultas pasan por SQLAlchemy (siempre parametrizadas). El CSV neutraliza las celdas que empiezan con `=`, `+`, `-` o `@`.
 
-**Límites conocidos:** el contador de fallos de login vive en memoria, por eso el `Dockerfile` usa **un solo worker** (con varios, cada uno cuenta aparte). Cambiar la contraseña no invalida los tokens ya emitidos (duran 60 min). MinIO aparece en la arquitectura pero la API todavía no lo usa.
+**Límites conocidos:** el contador de fallos de login, el rate limit y la lista de tokens cerrados viven en memoria, por eso el `Dockerfile` usa **un solo worker** (con varios, cada uno llevaría su propia cuenta y su propia lista). Si reinicias la API, los tokens cerrados con `/logout` vuelven a servir hasta que expiren (máximo 60 min). Cambiar o restablecer la contraseña tampoco cierra las sesiones ya abiertas: para eso hace falta Redis o un campo en la base. MinIO aparece en la arquitectura pero la API todavía no lo usa.
 
 ## Pruebas
 

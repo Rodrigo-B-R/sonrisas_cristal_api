@@ -27,7 +27,7 @@ import app.security as security  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.logging_config import security_log  # noqa: E402
 from app.main import app  # noqa: E402
-from app.security import limiter, login_guard  # noqa: E402
+from app.security import limiter, login_guard, token_denylist  # noqa: E402
 from tests import factories  # noqa: E402
 
 PASSWORD = "Secret123"
@@ -40,6 +40,7 @@ def fresh_database():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     login_guard._attempts.clear()
+    token_denylist._revoked.clear()
     limiter.enabled = False
     limiter.reset()
     yield

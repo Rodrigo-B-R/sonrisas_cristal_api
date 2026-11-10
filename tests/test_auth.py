@@ -1,5 +1,6 @@
 """Login, tokens, rate limit and account lockout (OWASP A07), and stale tokens (A01)."""
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -9,13 +10,13 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import Role, User
-from app.security import limiter, login_guard
+from app.security import TokenDenylist, limiter, login_guard
 from tests.conftest import PASSWORD
 
 
 def token_for(user_id, algorithm="HS256", expires_in=3600, secret=None, **extra):
     now = datetime.now(timezone.utc)
-    payload = {"sub": str(user_id), "iat": now, "exp": now + timedelta(seconds=expires_in), **extra}
+    payload = {"sub": str(user_id), "jti": uuid.uuid4().hex, "iat": now, "exp": now + timedelta(seconds=expires_in), **extra}
     return jwt.encode(payload, secret or settings.jwt_secret, algorithm=algorithm)
 
 
@@ -91,6 +92,64 @@ def test_role_in_the_token_is_ignored(client, world):
     token = token_for(world["ids"]["employee_a"], role="director", daycare_id=999)
     response = client.get("/staff", headers=bearer(token))
     assert response.status_code == 403
+
+
+def test_token_without_an_id_is_rejected(client, world):
+    """Every token carries a unique id (jti): without it, it could not be closed with /logout."""
+    token = jwt.encode({"sub": str(world["ids"]["manager_a"]), "exp": 9999999999}, settings.jwt_secret, algorithm="HS256")
+    assert client.get("/profile", headers=bearer(token)).status_code == 401
+
+
+# ── Logout ───────────────────────────────────────────────────────────
+
+
+def test_logout_closes_the_session(client, login):
+    headers = login("employee_a")
+    assert client.get("/profile", headers=headers).status_code == 200
+    closed = client.post("/logout", headers=headers)
+    assert closed.status_code == 200
+    assert closed.json() == {"message": "Session closed"}
+    # The token has not expired, but it does not work anymore
+    after = client.get("/profile", headers=headers)
+    assert after.status_code == 401
+    assert after.json() == {"error": "Token revoked"}
+    assert client.post("/logout", headers=headers).status_code == 401  # already closed
+
+
+def test_logout_only_closes_that_session(client, login):
+    phone, tablet = login("employee_a"), login("employee_a")
+    client.post("/logout", headers=phone)
+    assert client.get("/profile", headers=phone).status_code == 401
+    assert client.get("/profile", headers=tablet).status_code == 200  # the other device stays in
+
+
+def test_logout_needs_a_token_and_login_works_again_after_it(client, login):
+    assert client.post("/logout").status_code == 401
+    client.post("/logout", headers=login("manager_a"))
+    assert client.get("/profile", headers=login("manager_a")).status_code == 200  # a new login gets a new token
+
+
+def test_logout_is_logged(client, login, world, security_events):
+    headers = login("employee_a")
+    client.post("/logout", headers=headers)
+    client.get("/profile", headers=headers)
+    events = {event["event"]: event for event in security_events}
+    assert events["logout"]["user_id"] == world["ids"]["employee_a"]
+    assert events["auth_revoked_token"]["user_id"] == world["ids"]["employee_a"]
+
+
+def test_denylist_forgets_tokens_that_have_expired():
+    denylist = TokenDenylist()
+    now = datetime.now(timezone.utc)
+    denylist.revoke("still-valid", now + timedelta(minutes=5))
+    denylist.revoke("expired", now - timedelta(minutes=5))
+    assert denylist.is_revoked("still-valid") is True
+    assert denylist.is_revoked("expired") is False  # nothing left to protect
+    assert denylist.is_revoked("never-seen") is False
+    # when the list grows, the expired ones are dropped and the live ones are kept
+    denylist.PURGE_AT = 2
+    denylist.revoke("another", now + timedelta(minutes=5))
+    assert set(denylist._revoked) == {"still-valid", "another"}
 
 
 # ── A01: the token never goes stale ──────────────────────────────────

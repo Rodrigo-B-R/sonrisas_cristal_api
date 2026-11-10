@@ -20,7 +20,7 @@ from app.database import get_db
 from app.errors import ApiError
 from app.logging_config import security_event
 from app.models import User
-from app.security import get_client_ip, read_access_token
+from app.security import get_client_ip, read_access_token, token_denylist
 
 bearer_scheme = HTTPBearer(auto_error=False, description="Token from POST /login")
 
@@ -43,7 +43,7 @@ def get_current_user(
         security_event("auth_missing_token", ip=ip, method=request.method, path=request.url.path)
         raise ApiError(401, "Missing token", headers=UNAUTHORIZED)
     try:
-        user_id = read_access_token(credentials.credentials)
+        token = read_access_token(credentials.credentials)
     except jwt.ExpiredSignatureError:
         security_event("auth_expired_token", ip=ip, path=request.url.path)
         raise ApiError(401, "Token expired", headers=UNAUTHORIZED) from None
@@ -51,11 +51,16 @@ def get_current_user(
         security_event("auth_invalid_token", ip=ip, path=request.url.path)
         raise ApiError(401, "Invalid token", headers=UNAUTHORIZED) from None
 
-    user = db.scalar(select(User).options(joinedload(User.role)).where(User.id == user_id))
+    if token_denylist.is_revoked(token.jti):
+        security_event("auth_revoked_token", user_id=token.user_id, ip=ip, path=request.url.path)
+        raise ApiError(401, "Token revoked", headers=UNAUTHORIZED)
+
+    user = db.scalar(select(User).options(joinedload(User.role)).where(User.id == token.user_id))
     if user is None or not user.is_active:
-        security_event("auth_inactive_user", user_id=user_id, ip=ip, path=request.url.path)
+        security_event("auth_inactive_user", user_id=token.user_id, ip=ip, path=request.url.path)
         raise ApiError(401, "Invalid token", headers=UNAUTHORIZED)  # same message: do not reveal why
     request.state.user_id = user.id
+    request.state.token = token  # POST /logout needs to know which token is being used
     return user
 
 

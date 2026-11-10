@@ -3,6 +3,7 @@
 import secrets
 import threading
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -79,21 +80,70 @@ def temporary_password() -> str:
 ALGORITHM = "HS256"  # fixed on purpose: never let the token choose its own algorithm
 
 
+@dataclass(frozen=True)
+class TokenData:
+    user_id: int
+    jti: str  # unique id of this token: what POST /logout revokes
+    expires_at: datetime
+
+
 def create_access_token(user_id: int) -> tuple[str, int]:
     """Returns the token and the seconds it lasts."""
     now = datetime.now(timezone.utc)
     lifetime = timedelta(minutes=settings.jwt_expire_minutes)
-    payload = {"sub": str(user_id), "iat": now, "exp": now + lifetime}
+    payload = {"sub": str(user_id), "jti": uuid.uuid4().hex, "iat": now, "exp": now + lifetime}
     return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM), int(lifetime.total_seconds())
 
 
-def read_access_token(token: str) -> int:
-    """Returns the user id, or raises jwt.PyJWTError."""
-    payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM], options={"require": ["exp", "sub"]})
+def read_access_token(token: str) -> TokenData:
+    """Returns what the token says, or raises jwt.PyJWTError."""
+    payload = jwt.decode(
+        token, settings.jwt_secret, algorithms=[ALGORITHM], options={"require": ["exp", "sub", "jti"]}
+    )
+    jti = payload["jti"]
     try:
-        return int(payload["sub"])
+        user_id = int(payload["sub"])
     except (TypeError, ValueError) as error:
         raise jwt.InvalidTokenError("Invalid subject") from error
+    if not isinstance(jti, str) or not jti:
+        raise jwt.InvalidTokenError("Invalid token id")
+    return TokenData(user_id=user_id, jti=jti, expires_at=datetime.fromtimestamp(payload["exp"], timezone.utc))
+
+
+class TokenDenylist:
+    """The tokens closed with POST /logout.
+
+    A token is a signed text: the server cannot "take it back". So a closed one is remembered
+    here until the moment it would have expired anyway, and rejected while it is on the list.
+    It lives in memory (like the login counters): a restart forgets it, and with several workers
+    each one has its own list. Use Redis if that ever matters.
+    """
+
+    PURGE_AT = 10_000  # when the list grows this much, forget the ones that already expired
+
+    def __init__(self):
+        self._revoked: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def revoke(self, jti: str, expires_at: datetime) -> None:
+        with self._lock:
+            if len(self._revoked) >= self.PURGE_AT:
+                now = time.time()
+                self._revoked = {key: until for key, until in self._revoked.items() if until > now}
+            self._revoked[jti] = expires_at.timestamp()
+
+    def is_revoked(self, jti: str) -> bool:
+        with self._lock:
+            until = self._revoked.get(jti)
+            if until is None:
+                return False
+            if until <= time.time():  # it would be expired by now: nothing left to protect
+                del self._revoked[jti]
+                return False
+            return True
+
+
+token_denylist = TokenDenylist()
 
 
 # ── Client IP (the API is behind a Cloudflare tunnel) ────────────────

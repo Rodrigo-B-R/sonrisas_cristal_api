@@ -1,4 +1,4 @@
-"""POST /login, and with a token: GET /profile and PUT /profile/password."""
+"""POST /login, and with a token: POST /logout, GET /profile and PUT /profile/password."""
 
 import logging
 
@@ -19,6 +19,7 @@ from app.security import (
     limiter,
     login_guard,
     password_problems,
+    token_denylist,
     verify_password,
     waste_time_like_a_real_check,
 )
@@ -66,6 +67,19 @@ def login(request: Request, body: LoginIn, db: DbSession):
         "role": user.role_code,
         "user": {"id": user.id, "name": user.name, "daycare_id": user.daycare_id},
     }
+
+
+@router.post("/logout", response_model=MessageOut)
+def logout(request: Request, user: CurrentUser):
+    """Closes THIS session: the token stops working right away, even though it has not expired.
+
+    Other sessions of the same person (another phone) stay open. Calling it again with the same
+    token answers 401, because that token is already closed.
+    """
+    token = request.state.token
+    token_denylist.revoke(token.jti, token.expires_at)
+    security_event("logout", level=logging.INFO, user_id=user.id, ip=get_client_ip(request))
+    return {"message": "Session closed"}
 
 
 @router.get("/profile", response_model=ProfileOut)
