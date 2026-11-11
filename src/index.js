@@ -9,11 +9,17 @@ if (!process.env.DATABASE_URL || !process.env.JWT_SECRET) {
 const express = require('express');
 const { verificarToken } = require('./middleware/auth');
 const { medir, exponer } = require('./metricas');
+const { cabeceras, revisarBody } = require('./seguridad');
 
 const app = express();
+app.disable('x-powered-by');
+// Detrás de un proxy (Cloudflare, nginx) pon TRUST_PROXY=1 para leer la IP real
+if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
 
 app.use(medir);
-app.use(express.json());
+app.use(cabeceras);
+app.use(express.json({ limit: '20kb' }));
+app.use(revisarBody);
 
 // Las columnas DATE y TIME se responden cortas: "2026-11-04" y "07:00".
 const CAMPOS_FECHA = ['fecha', 'vigenteDesde', 'vigenteHasta'];
@@ -64,6 +70,12 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'El body no es JSON válido' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'El body es demasiado grande' });
+  }
+  if (err.code === 'P2000') {
+    return res.status(400).json({ error: 'Un texto es demasiado largo' });
   }
   if (err.code === 'P2002') {
     return res.status(409).json({ error: 'Ya existe un registro con ese dato (por ejemplo, clave o correo repetido)' });

@@ -2,6 +2,7 @@
 const express = require('express');
 const prisma = require('../prisma');
 const { verificarToken, permitir } = require('../middleware/auth');
+const { celdaCsv } = require('../seguridad');
 const { hoy, esFecha, aFechaDb, rangoDeFechas, leerPeriodo, filtroEstancia } = require('../utilidades');
 const {
   cargarDatos,
@@ -135,7 +136,6 @@ router.get('/exportar/asistencias', verificarToken, permitir('responsable', 'dir
   const datos = await cargarDatos(filtroEstancia(req), desde, hasta);
   const fechas = rangoDeFechas(desde, hasta);
 
-  const campo = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
   const filas = [
     ['estancia', 'nombre', 'clave', 'puesto', 'fecha', 'turno', 'sala', 'hora_programada', 'entrada', 'salida', 'estado', 'motivo', 'minutos_retardo', 'dentro_de_zona'],
   ];
@@ -160,7 +160,7 @@ router.get('/exportar/asistencias', verificarToken, permitir('responsable', 'dir
       ]);
     }
   }
-  const csv = '﻿' + filas.map((f) => f.map(campo).join(',')).join('\r\n'); // BOM para que Excel lea los acentos
+  const csv = '﻿' + filas.map((f) => f.map(celdaCsv).join(',')).join('\r\n'); // BOM para que Excel lea los acentos
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', `attachment; filename="asistencias_${desde}_${hasta}.csv"`);
   res.send(csv);

@@ -307,7 +307,7 @@ Authorization: Bearer {{empleada}}
 
 ### ═══════════════ Contraseña (ida y vuelta) ═══════════════
 
-### 46. Cambiar mi contraseña
+### 46. Cambiar mi contraseña (el token viejo deja de servir: Postman guarda solo el nuevo; en REST Client cópialo a @empleada)
 PUT {{base}}/perfil/password
 Authorization: Bearer {{empleada}}
 Content-Type: application/json

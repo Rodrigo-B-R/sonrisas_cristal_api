@@ -1246,7 +1246,7 @@
       "name": "Contraseña (ida y vuelta)",
       "item": [
         {
-          "name": "46. Cambiar mi contraseña",
+          "name": "46. Cambiar mi contraseña (el token viejo deja de servir: Postman guarda solo el nuevo; en REST Client cópialo a @empleada)",
           "request": {
             "method": "PUT",
             "header": [
@@ -1270,7 +1270,18 @@
               "mode": "raw",
               "raw": "{ \"actual\": \"Cristal2026\", \"nueva\": \"Cristal2027\" }"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) pm.collectionVariables.set('empleada', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "47. Regresarla a la original (para que los logins sigan funcionando)",
@@ -1297,7 +1308,18 @@
               "mode": "raw",
               "raw": "{ \"actual\": \"Cristal2027\", \"nueva\": \"Cristal2026\" }"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) pm.collectionVariables.set('empleada', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

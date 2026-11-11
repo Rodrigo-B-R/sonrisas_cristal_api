@@ -25,6 +25,13 @@ Roles: **empleada**, **responsable** (su estancia) y **direccion** (todas).
 
 Todo pide `Authorization: Bearer <token>`, menos `/`, `/login` y `/metrics`. Hay ejemplos en `pruebas.http` y en la colección de Postman.
 
+## Seguridad
+
+- **Login:** máximo 5 intentos por minuto por IP (después responde `429`).
+- **Token (JWT HS256, 1 h):** en cada petición se revisa que la persona siga activa y se usan su rol y estancia actuales. Si le dan de baja o cambia su contraseña, sus tokens viejos dejan de servir (`PUT /perfil/password` regresa uno nuevo).
+- **Cabeceras:** `nosniff`, `X-Frame-Options`, `HSTS`, `CSP`, `Cache-Control: no-store`, sin `X-Powered-By`.
+- **Datos:** textos de máximo 255 caracteres, listas de máximo 200 y body de máximo 20 KB. El CSV neutraliza fórmulas de Excel.
+
 ## Cómo prenderla
 
 Clona este repo y `sonrisas_cristal_db` en la misma carpeta. Luego copia `.env.example` como `.env`.
