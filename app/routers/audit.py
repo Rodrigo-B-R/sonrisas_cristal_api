@@ -24,7 +24,7 @@ def list_changes(
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate", description="Default: Monday of this week"),
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),
-    table: Literal["registro_entradas", "asistencia", "correccion_registro"] | None = None,
+    table: Literal["registro_entradas", "asistencia"] | None = None,
     record_id: int | None = Query(None, alias="recordId"),
     user_id: int | None = Query(None, alias="userId"),
 ):

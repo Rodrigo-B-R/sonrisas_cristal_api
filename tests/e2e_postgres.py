@@ -80,14 +80,8 @@ def main() -> int:
         check("clock-out", out.status_code == 200 and out.json()["clockOutAt"] == f"{DAY}T21:00:00.000Z", out.text[:200])
         record_id = body["record"]["id"]
 
-        # ── Correction flow (two audited tables) ────────────────────────
-        correction = client.post("/corrections", headers=ana, json={"recordId": record_id, "clockInAt": f"{DAY}T07:00:00", "reason": "Forgot to clock in"})
-        check("correction requested", correction.status_code == 201, correction.text[:200])
-        approved = client.post(f"/corrections/{correction.json()['id']}/approve", headers=marisol)
-        check("correction approved", approved.status_code == 200 and approved.json()["status"] == "approved", approved.text[:200])
-        fixed = client.get(f"/time-records?startDate={DAY}&endDate={DAY}", headers=ana).json()[0]
-        check("record changed on approval", fixed["clockInAt"] == f"{DAY}T13:00:00.000Z")
-        direct = client.put(f"/time-records/{record_id}", headers=marisol, json={"clockOutAt": f"{DAY}T14:30:00", "reason": "Left early"})
+        # ── Manager fix ─────────────────────────────────────────────────
+        direct = client.put(f"/time-records/{record_id}", headers=marisol, json={"clockOutAt": f"{DAY}T14:30:00"})
         check("manager fixes a record directly", direct.status_code == 200, direct.text[:200])
 
         # ── Attendance (CHECK constraint: absent needs a reason) ────────
@@ -101,7 +95,7 @@ def main() -> int:
         by_table: dict[str, list] = {}
         for entry in audit:
             by_table.setdefault(entry["table"], []).append(entry)
-        check("audit: the three tables are there", set(by_table) == {"registro_entradas", "asistencia", "correccion_registro"}, str(set(by_table)))
+        check("audit: the two tables are there", set(by_table) == {"registro_entradas", "asistencia"}, str(set(by_table)))
         check("audit: no change without an author", all(e["userId"] is not None for e in audit), str([e for e in audit if e["userId"] is None][:2]))
 
         def authors(table: str, action: str) -> set:
@@ -109,7 +103,6 @@ def main() -> int:
 
         check("audit: clock-in written by ana", ana_id in authors("registro_entradas", "INSERT"))
         check("audit: record updates written by ana and marisol", {ana_id, marisol_id} <= authors("registro_entradas", "UPDATE"))
-        check("audit: correction requested by ana, resolved by marisol", ana_id in authors("correccion_registro", "INSERT") and marisol_id in authors("correccion_registro", "UPDATE"))
         check("audit: absence written by marisol", marisol_id in authors("asistencia", "INSERT"))
         previous = next(e for e in by_table["registro_entradas"] if e["action"] == "UPDATE")
         check("audit: keeps previous and new data", previous["previousData"] and previous["newData"])

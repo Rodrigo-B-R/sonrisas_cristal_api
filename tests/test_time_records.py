@@ -1,4 +1,4 @@
-"""Clock-in / clock-out, attendance and corrections."""
+"""Clock-in / clock-out, attendance and manager fixes."""
 
 import uuid
 from datetime import timedelta
@@ -248,82 +248,16 @@ def test_attendance_period_validations(client, login):
     assert client.get("/attendance?startDate=not-a-date", headers=headers).status_code == 400
 
 
-# ── Corrections ──────────────────────────────────────────────────────
+# ── Manager fixes ────────────────────────────────────────────────────
 
 
-def test_request_and_approve_a_correction(client, login, world):
+def test_manager_fixes_a_record_directly(client, login):
     employee, manager = login("employee_a"), login("manager_a")
     record = clock_in(client, employee, time="07:30:00").json()["record"]
-
-    created = client.post(
-        "/corrections", headers=employee, json={"recordId": record["id"], "clockInAt": f"{DAY}T07:00:00", "reason": "Forgot to clock in"}
-    )
-    assert created.status_code == 201, created.text
-    correction = created.json()
-    assert correction["status"] == "pending"
-    assert correction["previousClockIn"] == f"{DAY}T13:30:00.000Z"
-    assert correction["proposedClockIn"] == f"{DAY}T13:00:00.000Z"
-    assert correction["requestedBy"]["name"] == "Employee A"
-
-    # The record has not changed yet
-    unchanged = client.get(f"/time-records?startDate={DAY}&endDate={DAY}", headers=employee).json()[0]
-    assert unchanged["clockInAt"] == f"{DAY}T13:30:00.000Z"
-
-    # Only one pending correction per record
-    again = client.post("/corrections", headers=employee, json={"recordId": record["id"], "clockInAt": f"{DAY}T07:10:00", "reason": "x"})
-    assert again.status_code == 409 and again.json()["correctionId"] == correction["id"]
-
-    # The employee cannot approve their own
-    assert client.post(f"/corrections/{correction['id']}/approve", headers=employee).status_code == 403
-    # Another daycare's manager cannot either
-    assert client.post(f"/corrections/{correction['id']}/approve", headers=login("manager_b")).status_code == 404
-
-    approved = client.post(f"/corrections/{correction['id']}/approve", headers=manager)
-    assert approved.status_code == 200
-    assert approved.json()["status"] == "approved"
-    assert approved.json()["resolvedBy"]["name"] == "Manager A"
-    changed = client.get(f"/time-records?startDate={DAY}&endDate={DAY}", headers=employee).json()[0]
-    assert changed["clockInAt"] == f"{DAY}T13:00:00.000Z"
-
-    # It cannot be resolved twice
-    assert client.post(f"/corrections/{correction['id']}/reject", headers=manager).status_code == 409
-
-
-def test_rejected_correction_leaves_the_record_alone(client, login):
-    employee, manager = login("employee_a"), login("manager_a")
-    record = clock_in(client, employee, time="07:30:00").json()["record"]
-    correction = client.post("/corrections", headers=employee, json={"recordId": record["id"], "clockInAt": f"{DAY}T07:00:00", "reason": "x"}).json()
-    rejected = client.post(f"/corrections/{correction['id']}/reject", headers=manager)
-    assert rejected.json()["status"] == "rejected"
-    assert client.get(f"/time-records?startDate={DAY}&endDate={DAY}", headers=employee).json()[0]["clockInAt"] == f"{DAY}T13:30:00.000Z"
-    pending = client.get("/corrections?status=pending", headers=manager).json()
-    assert pending == []
-
-
-def test_employee_cannot_correct_someone_elses_record(client, login):
-    record = clock_in(client, login("employee_b"), time="07:30:00").json()["record"]
-    response = client.post("/corrections", headers=login("employee_a"), json={"recordId": record["id"], "clockInAt": f"{DAY}T07:00:00", "reason": "x"})
-    assert response.status_code == 404
-
-
-def test_a_correction_needs_a_change_and_a_valid_order(client, login):
-    employee = login("employee_a")
-    record = clock_in(client, employee, time="08:00:00").json()["record"]
-    nothing = client.post("/corrections", headers=employee, json={"recordId": record["id"], "reason": "x"})
-    assert nothing.status_code == 400
-    backwards = client.post("/corrections", headers=employee, json={"recordId": record["id"], "clockOutAt": f"{DAY}T07:00:00", "reason": "x"})
-    assert backwards.status_code == 400
-
-
-def test_manager_fixes_a_record_directly_and_it_is_logged_as_a_correction(client, login):
-    employee, manager = login("employee_a"), login("manager_a")
-    record = clock_in(client, employee, time="07:30:00").json()["record"]
-    fixed = client.put(f"/time-records/{record['id']}", headers=manager, json={"clockInAt": f"{DAY}T07:00:00", "clockOutAt": f"{DAY}T15:00:00", "reason": "Phone died"})
+    fixed = client.put(f"/time-records/{record['id']}", headers=manager, json={"clockInAt": f"{DAY}T07:00:00", "clockOutAt": f"{DAY}T15:00:00"})
     assert fixed.status_code == 200, fixed.text
     assert fixed.json()["clockInAt"] == f"{DAY}T13:00:00.000Z"
     assert fixed.json()["clockOutAt"] == f"{DAY}T21:00:00.000Z"
-    history = client.get("/corrections?status=approved", headers=manager).json()
-    assert len(history) == 1 and history[0]["reason"] == "Phone died"
     # "clockOutAt": null removes the clock-out
     cleared = client.put(f"/time-records/{record['id']}", headers=manager, json={"clockOutAt": None})
     assert cleared.json()["clockOutAt"] is None

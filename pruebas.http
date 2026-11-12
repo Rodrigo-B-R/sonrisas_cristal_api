@@ -106,17 +106,6 @@ Authorization: Bearer {{employee}}
 POST {{base}}/notices/1/read
 Authorization: Bearer {{employee}}
 
-### Ask for a correction of one of my records
-POST {{base}}/corrections
-Authorization: Bearer {{employee}}
-Content-Type: application/json
-
-{ "recordId": 1, "clockInAt": "{{day}}T07:00:00", "reason": "I forgot to clock in" }
-
-### My corrections
-GET {{base}}/corrections
-Authorization: Bearer {{employee}}
-
 ### ═══════════════ Manager ═══════════════
 
 ### Staff of my daycare (?active=false for terminated, ?active=all for both)
@@ -209,24 +198,12 @@ Content-Type: application/json
 GET {{base}}/time-records?startDate={{day}}&endDate={{day}}&withinZone=false
 Authorization: Bearer {{manager}}
 
-### Fix a record directly (it is saved as an approved correction). "clockOutAt": null removes the clock-out.
+### Fix a record directly. "clockOutAt": null removes the clock-out.
 PUT {{base}}/time-records/1
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
-{ "clockInAt": "{{day}}T07:00:00", "reason": "The phone had no signal" }
-
-### Pending corrections
-GET {{base}}/corrections?status=pending
-Authorization: Bearer {{manager}}
-
-### Approve / reject a correction
-POST {{base}}/corrections/1/approve
-Authorization: Bearer {{manager}}
-
-###
-POST {{base}}/corrections/1/reject
-Authorization: Bearer {{manager}}
+{ "clockInAt": "{{day}}T07:00:00" }
 
 ### Attendance of the daycare in a period
 GET {{base}}/attendance?startDate=2026-11-02&endDate=2026-11-08

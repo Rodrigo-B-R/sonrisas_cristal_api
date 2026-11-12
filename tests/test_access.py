@@ -16,7 +16,7 @@ def usernames(response):
 def test_every_route_needs_a_token(client, world):
     protected = [
         ("GET", "/catalogs"), ("GET", "/daycares"), ("GET", "/rooms"), ("GET", "/staff"), ("GET", "/movements"),
-        ("GET", "/schedules"), ("GET", "/time-records"), ("GET", "/corrections"), ("GET", "/attendance"),
+        ("GET", "/schedules"), ("GET", "/time-records"), ("GET", "/attendance"),
         ("GET", "/notices"), ("GET", "/audit"), ("GET", "/coverage"), ("GET", "/summary"),
         ("GET", "/statistics"), ("GET", "/export/attendance"), ("GET", "/profile"),
         ("POST", "/time-records/clock-in"), ("POST", "/staff"), ("PUT", "/profile/password"),
@@ -161,7 +161,7 @@ def test_records_of_other_daycares_are_not_listed(client, login, world):
     assert {item["user"]["id"] for item in mine} == {world["ids"]["employee_b"]}
 
 
-def test_notices_and_corrections_are_scoped(client, login, world):
+def test_notices_are_scoped(client, login, world):
     manager_a, manager_b = login("manager_a"), login("manager_b")
     notice = client.post("/notices", headers=manager_b, json={"subject": "S", "message": "M", "noticeType": "reminder"})
     assert notice.status_code == 201

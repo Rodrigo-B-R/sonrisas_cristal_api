@@ -31,10 +31,6 @@ NOTICE_TYPE_TO_DB = {
 }
 NOTICE_TYPE_FROM_DB = {db: api for api, db in NOTICE_TYPE_TO_DB.items()}
 
-# ── Corrections ──────────────────────────────────────────────────────
-CORRECTION_TO_DB = {"pending": "pendiente", "approved": "aprobada", "rejected": "rechazada"}
-CORRECTION_FROM_DB = {db: api for api, db in CORRECTION_TO_DB.items()}
-
 # ── Staff movements ──────────────────────────────────────────────────
 MOVEMENT_TO_DB = {"hire": "alta", "termination": "baja", "transfer": "traslado"}
 MOVEMENT_FROM_DB = {db: api for api, db in MOVEMENT_TO_DB.items()}
@@ -51,7 +47,7 @@ WEEKDAY_FROM_DB = dict(zip(WEEKDAYS_DB, WEEKDAYS))
 
 # ── Audit ────────────────────────────────────────────────────────────
 # Tables the database triggers write to the audit log for.
-AUDITED_TABLES = ["registro_entradas", "asistencia", "correccion_registro"]
+AUDITED_TABLES = ["registro_entradas", "asistencia"]
 
 # A schedule with no end date is stored until this date (valid_until does not accept NULL).
 NO_END = date(2099, 12, 31)

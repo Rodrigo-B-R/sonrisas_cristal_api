@@ -7,11 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.access import can_access_daycare, daycare_scope, require_found
-from app.constants import CORRECTION_TO_DB
 from app.database import set_audit_user
 from app.dependencies import CurrentUser, DbSession, EmployeeOrManager, ManagerOnly, get_current_user
 from app.errors import ApiError
-from app.models import Correction, Daycare, TimeRecord, User
+from app.models import Daycare, TimeRecord, User
 from app.schemas import BatchIn, BatchOut, ClockInIn, ClockInOut, ClockOutIn, ClockStatusOut, RecordFixIn, TimeRecordOut
 from app.services import records as record_service
 from app.services.records import record_options
@@ -144,7 +143,7 @@ def clock_in_batch(body: BatchIn, user: ManagerOnly, db: DbSession):
 
 @router.put("/{record_id}", response_model=TimeRecordOut)
 def fix_record(record_id: int, body: RecordFixIn, user: ManagerOnly, db: DbSession):
-    """The manager corrects a record. It is saved in corrections as an already-approved correction."""
+    """The manager corrects a record directly. The before/after is kept by the audit triggers."""
     record = db.scalars(select(TimeRecord).where(TimeRecord.id == record_id).options(*record_options())).first()
     record = require_found(record)
     if not can_access_daycare(user, record.user.daycare_id):
@@ -158,20 +157,6 @@ def fix_record(record_id: int, body: RecordFixIn, user: ManagerOnly, db: DbSessi
         clock_out_sent,
     )
     set_audit_user(db, user.id)
-    db.add(
-        Correction(
-            record_id=record.id,
-            previous_clock_in=proposed.previous_clock_in,
-            previous_clock_out=proposed.previous_clock_out,
-            proposed_clock_in=proposed.proposed_clock_in,
-            proposed_clock_out=proposed.proposed_clock_out,
-            reason=body.reason or "Corrected by the manager",
-            requested_by_id=user.id,
-            status=CORRECTION_TO_DB["approved"],
-            resolved_by_id=user.id,
-            resolved_at=now_utc(),
-        )
-    )
     record.clock_in_at = proposed.proposed_clock_in
     record.clock_out_at = proposed.proposed_clock_out
     db.commit()

@@ -19,7 +19,6 @@ Roles: **employee**, **manager** (su daycare) y **director** (todas).
 | `/staff`, `/movements` | Personal, altas, bajas (`/terminate`) y traslados (`/transfer`) | `/personal`, `/movimientos` |
 | `/schedules` | Horario semanal (`/me` es el propio) | `/horarios` |
 | `/time-records` | Entradas y salidas (`/clock-in`, `/clock-out`, `/batch`, `/status`) | `/registros` |
-| `/corrections` | Pedir y aprobar correcciones de hora (`/approve`, `/reject`) | `/correcciones` |
 | `/attendance` | Presente, retardo, falta o incidencia (`/me` es la propia) | `/asistencias` |
 | `/notices` | Avisos: `/inbox` lo que me llegó, `/{id}/read` confirmar lectura | `/avisos` |
 | `/audit` | Quién cambió qué (director) | `/auditoria` |
@@ -96,7 +95,7 @@ uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 - **Fuerza bruta en el login:** límite por IP (5/min), bloqueo de la cuenta tras 10 fallos en 15 min (responde `429` + `Retry-After`) y respuesta idéntica para usuario inexistente, contraseña mala o cuenta inactiva, también en tiempo.
 - **Detrás del túnel de Cloudflare** todas las peticiones llegan desde el contenedor del túnel; la IP real viene en `CF-Connecting-IP`. Esa cabecera solo se cree si la petición viene de `TRUSTED_PROXIES` (pon la subred de `sonrisas_net`: `docker network inspect sonrisas_net`). Sin eso, todos los usuarios compartirían un solo contador de 5 intentos por minuto. Ojo: si publicas el puerto 8000 en la PC, quien llegue directo por ahí también viene "de confianza"; el bloqueo por cuenta sigue protegiendo.
 - **Logs en JSON**, una línea por petición (`app.request`: id, método, ruta, status, ms, usuario, IP) y los eventos de seguridad en `app.security`: `login_failed`, `login_success`, `logout`, `account_locked`, `login_locked`, `rate_limited`, `auth_*`, `access_denied` (403), `password_changed`, `password_reset`, `role_changed`, `staff_created`, `staff_terminated`, `staff_transferred`, `metrics_denied`. Nunca se escribe una contraseña ni un token. Cada respuesta trae `X-Request-ID` para encontrar su línea.
-- **Auditoría en la base:** cada escritura en `registro_entradas`, `asistencia` y `correccion_registro` fija antes `app.id_usuario` (`set_audit_user`), así el trigger guarda quién la hizo. `api_user` no puede borrar ni escribir en `auditoria`.
+- **Auditoría en la base:** cada escritura en `registro_entradas` y `asistencia` fija antes `app.id_usuario` (`set_audit_user`), así el trigger guarda quién la hizo. `api_user` no puede borrar ni escribir en `auditoria`.
 - Los datos de entrada se validan con Pydantic y las consultas pasan por SQLAlchemy (siempre parametrizadas). El CSV neutraliza las celdas que empiezan con `=`, `+`, `-` o `@`.
 
 **Límites conocidos:** el contador de fallos de login, el rate limit y la lista de tokens cerrados viven en memoria, por eso el `Dockerfile` usa **un solo worker** (con varios, cada uno llevaría su propia cuenta y su propia lista). Si reinicias la API, los tokens cerrados con `/logout` vuelven a servir hasta que expiren (máximo 60 min). Cambiar o restablecer la contraseña tampoco cierra las sesiones ya abiertas: para eso hace falta Redis o un campo en la base. MinIO aparece en la arquitectura pero la API todavía no lo usa.
@@ -108,7 +107,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Son ~100 pruebas sobre SQLite (no necesitan PostgreSQL): roles, aislamiento entre daycares, tokens, rate limit, bloqueo de cuenta, logging, checadas, correcciones, avisos y reportes.
+Son ~100 pruebas sobre SQLite (no necesitan PostgreSQL): roles, aislamiento entre daycares, tokens, rate limit, bloqueo de cuenta, logging, checadas, avisos y reportes.
 
 Lo que SQLite no cubre (triggers de auditoría, restricciones `CHECK`, tipos de PostgreSQL, permisos de `api_user`) lo revisa `tests/e2e_postgres.py` contra la base real, **con una base de desarrollo** (`api_user` no puede borrar, así que deja registros):
 

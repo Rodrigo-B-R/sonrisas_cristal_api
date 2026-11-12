@@ -344,51 +344,6 @@
               ]
             }
           }
-        },
-        {
-          "name": "48. Pedir corrección de la hora de un registro (queda pendiente hasta que la Responsable la aprueba)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{base}}/correcciones",
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{empleada}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{ \"registroId\": 1, \"fechaHoraEntrada\": \"2026-11-05T07:00:00-06:00\", \"motivo\": \"Llegué a tiempo pero no tenía señal\" }"
-            }
-          }
-        },
-        {
-          "name": "49. Mis correcciones",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{base}}/correcciones",
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{empleada}}",
-                  "type": "string"
-                }
-              ]
-            }
-          }
         }
       ]
     },
@@ -662,42 +617,6 @@
             "method": "GET",
             "header": [],
             "url": "{{base}}/registros",
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{responsable}}",
-                  "type": "string"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "50. Correcciones pendientes de la estancia (?estado=pendiente|aprobada|rechazada)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{base}}/correcciones?estado=pendiente",
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{responsable}}",
-                  "type": "string"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "51. Aprobar la corrección 1 (cambia la hora del registro; /rechazar la deja igual)",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": "{{base}}/correcciones/1/aprobar",
             "auth": {
               "type": "bearer",
               "bearer": [

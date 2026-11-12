@@ -23,7 +23,6 @@ from pydantic.alias_generators import to_camel
 
 from app.constants import (
     ATTENDANCE_FROM_DB,
-    CORRECTION_FROM_DB,
     MOVEMENT_FROM_DB,
     NOTICE_TYPE_FROM_DB,
     ROLE_FROM_DB,
@@ -59,7 +58,6 @@ AttendanceStatus = Literal["present", "late", "absent", "incident"]
 NoticeType = Literal["schedule_change", "meeting", "reminder", "urgent"]
 NoticeTarget = Literal["all", "shift", "room", "people"]
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-CorrectionStatus = Literal["pending", "approved", "rejected"]
 MovementType = Literal["hire", "termination", "transfer"]
 
 Name = Annotated[str, Field(min_length=1, max_length=255)]
@@ -456,37 +454,6 @@ class RecordFixIn(In):
 
     clock_in_at: datetime | None = None
     clock_out_at: datetime | None = None
-    reason: Annotated[str, Field(max_length=255)] | None = None
-
-
-# ── Corrections ──────────────────────────────────────────────────────
-
-
-class CorrectionOut(Out):
-    id: int
-    record_id: int
-    requested_by_id: int
-    previous_clock_in: UtcTimestamp
-    proposed_clock_in: UtcTimestamp
-    previous_clock_out: UtcTimestamp | None
-    proposed_clock_out: UtcTimestamp | None
-    reason: str
-    status: str
-    resolved_by_id: int | None
-    resolved_at: UtcTimestamp | None
-    created_at: UtcTimestamp
-    record: TimeRecordOut
-    requested_by: NameRef
-    resolved_by: NameRef | None
-
-    _status = field_validator("status", mode="before")(_translate(CORRECTION_FROM_DB))
-
-
-class CorrectionIn(In):
-    record_id: Id
-    clock_in_at: datetime | None = None
-    clock_out_at: datetime | None = None
-    reason: Annotated[str, Field(min_length=1, max_length=255)]
 
 
 # ── Attendance ───────────────────────────────────────────────────────

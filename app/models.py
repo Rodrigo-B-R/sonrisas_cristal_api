@@ -249,7 +249,7 @@ class ScheduleDay(Base):
     room: Mapped[Room] = relationship()
 
 
-# ── Time records, attendance and corrections ─────────────────────────
+# ── Time records and attendance ─────────────────────────
 
 
 class TimeRecord(Base):
@@ -287,29 +287,6 @@ class Attendance(Base):
     daycare_id: Mapped[int] = mapped_column("id_estancia", ForeignKey("estancia.id"))
 
     absence_reason: Mapped[AbsenceReason | None] = relationship()
-
-
-class Correction(Base):
-    """A request to fix a time record. The record only changes when it is approved."""
-
-    __tablename__ = "correccion_registro"
-
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
-    record_id: Mapped[int] = mapped_column("id_registro_entrada", ForeignKey("registro_entradas.id"))
-    requested_by_id: Mapped[int] = mapped_column("id_usuario_solicita", ForeignKey("usuario.id"))
-    previous_clock_in: Mapped[dt.datetime] = mapped_column("entrada_anterior", UTCDateTime)
-    proposed_clock_in: Mapped[dt.datetime] = mapped_column("entrada_propuesta", UTCDateTime)
-    previous_clock_out: Mapped[dt.datetime | None] = mapped_column("salida_anterior", UTCDateTime)
-    proposed_clock_out: Mapped[dt.datetime | None] = mapped_column("salida_propuesta", UTCDateTime)
-    reason: Mapped[str] = mapped_column("motivo", String(255))
-    status: Mapped[str] = mapped_column("estado", String(255), default="pendiente")
-    resolved_by_id: Mapped[int | None] = mapped_column("id_usuario_resuelve", ForeignKey("usuario.id"))
-    resolved_at: Mapped[dt.datetime | None] = mapped_column("resuelto_en", UTCDateTime)
-    created_at: Mapped[dt.datetime] = mapped_column("creado_en", UTCDateTime, default=_utcnow)
-
-    record: Mapped[TimeRecord] = relationship()
-    requested_by: Mapped[User] = relationship(foreign_keys=[requested_by_id])
-    resolved_by: Mapped[User | None] = relationship(foreign_keys=[resolved_by_id])
 
 
 class AuditLog(Base):

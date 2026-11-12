@@ -57,8 +57,8 @@ app/
   constants.py       API (English) <-> DB (Spanish) value maps; weekdays; NO_END
   timeutils.py       TZ helpers, read_period, read_timestamp
   routers/           session, catalogs, daycares, rooms, staff, movements, schedules, time_records,
-                     corrections, attendance, notices, audit, reports
-  services/          schedules.py, records.py (clock-in/out, corrections), calculations.py (attendance/coverage/statistics)
+                     attendance, notices, audit, reports
+  services/          schedules.py, records.py (clock-in/out, manager fixes), calculations.py (attendance/coverage/statistics)
 scripts/             create_tables.py, seed.py
 tests/               conftest.py, factories.py, test_*.py (SQLite), e2e_postgres.py (real PostgreSQL, not collected by pytest)
 requirements.txt / requirements-dev.txt / pytest.ini / Dockerfile / docker-compose.yml / .env.example
@@ -137,14 +137,7 @@ No DELETE anywhere: the DB user cannot delete.
 | POST | `/time-records/clock-in` | E/M | `{uuid?, occurredAt?, latitude?, longitude?, withinZone?, roomId?, shiftId?}` → 201 `{record, attendance, repeated:false}`; **same uuid again → 200 `repeated:true`**; `roomId` and `shiftId` together or neither. Also creates the day's attendance (present/late) |
 | POST | `/time-records/clock-out` | E/M | `{occurredAt?}`; same-second exit is saved +1 s (DB needs out > in) |
 | POST | `/time-records/batch` | M | `{userIds, occurredAt?, roomId?, shiftId?}` → 201 `{recorded, skipped}` |
-| PUT | `/time-records/{id}` | M | `{clockInAt?, clockOutAt?, reason?}`; `clockOutAt: null` removes it; saved as an **already approved** correction |
-
-### Corrections
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| GET | `/corrections` | Any | `?status=pending\|approved\|rejected` (+ `daycareId` director). Employee: own |
-| POST | `/corrections` | E/M | `{recordId, clockInAt?, clockOutAt?, reason}` → 201; 409 with `correctionId` if one is pending |
-| POST | `/corrections/{id}/approve` · `/reject` | M | approving updates the record in the same transaction; 409 if already resolved |
+| PUT | `/time-records/{id}` | M | `{clockInAt?, clockOutAt?}`; `clockOutAt: null` removes it; the before/after is kept by the audit triggers |
 
 ### Attendance
 | Method | Path | Role | Notes |
@@ -188,7 +181,7 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 
 **Validation.** Pydantic `In` models: camelCase aliases, `extra="forbid"` (no mass assignment), stripped strings. Validation errors → `400 {"error":"Invalid data","details":[{"in","field","message"}]}` (input values are never echoed). Domain errors raise `ApiError(status, message, **extra)`. One format everywhere: `{"error": "..."}`. IntegrityError (UNIQUE→409, FK→409, CHECK/NOT NULL→400), DataError→400, unhandled→500 `{"error":"Internal error","requestId"}` (stack only in the log).
 
-**Audit trail.** Triggers in the DB audit `registro_entradas`, `asistencia`, `correccion_registro` into `auditoria` and read the author from `current_setting('app.id_usuario')`. **Every write to those three tables must call `set_audit_user(db, user_id)` before writing and commit in the same transaction** (`SELECT set_config('app.id_usuario', :id, true)`; no-op on SQLite). Writes without it are audited with `NULL` author. `auditoria` is read-only for `api_user`.
+**Audit trail.** Triggers in the DB audit `registro_entradas` and `asistencia` into `auditoria` and read the author from `current_setting('app.id_usuario')`. **Every write to those three tables must call `set_audit_user(db, user_id)` before writing and commit in the same transaction** (`SELECT set_config('app.id_usuario', :id, true)`; no-op on SQLite). Writes without it are audited with `NULL` author. `auditoria` is read-only for `api_user`.
 
 **Time.** Timestamps are stored/returned in UTC; responses format them as `2026-11-04T13:05:00.000Z` (`UtcTimestamp`). Times are `"HH:MM"` (`ShortTime`). Dates are `YYYY-MM-DD`. "Today", lateness and attendance days use `TZ` (default `America/Monterrey`, UTC-6, no DST). A client timestamp without offset is read in `TZ`; it cannot be more than 5 minutes in the future. Clock-ins carry a client-made `uuid` so offline retries never duplicate.
 
@@ -251,7 +244,7 @@ Docker: building/running the image was verified (healthy, non-root, no `/docs` i
 - `models.py` `UTCDateTime` returns aware UTC datetimes on PostgreSQL and SQLite; `BigId` is `BigInteger` with an `Integer` variant for SQLite autoincrement.
 - Tests run on SQLite, so triggers, CHECK constraints and `set_config` are **not** exercised there. Anything touching them needs the real-PostgreSQL e2e.
 - `security.BCRYPT_ROUNDS = 4` in tests only (module global read at call time).
-- Reading a request body field that was sent as `null` vs omitted: use `body.model_fields_set` (see `clock_out_at` in corrections/time-records).
+- Reading a request body field that was sent as `null` vs omitted: use `body.model_fields_set` (see `clock_out_at` in time-records).
 - Attendance report lists every person employed in the period (a manager with no schedule appears with empty `days`); this matches the Node behavior.
 - `starlette.testclient` prints a deprecation about httpx; filtered in `pytest.ini`.
 
@@ -259,7 +252,7 @@ Docker: building/running the image was verified (healthy, non-root, no `/docs` i
 
 1. Request/response models in `app/schemas.py` (`In` / `Out`; translate DB values with `_translate`; `Date` alias for dates).
 2. Route in the right `app/routers/*.py`: take the role alias (`ManagerOnly`...) and `DbSession`; scope every query with `daycare_scope`/`can_access_daycare` and answer 404 for other daycares; raise `ApiError`.
-3. If it writes to `registro_entradas`, `asistencia` or `correccion_registro`: `set_audit_user(db, user.id)` first, commit in the same transaction.
+3. If it writes to `registro_entradas` or `asistencia`: `set_audit_user(db, user.id)` first, commit in the same transaction.
 4. If it changes staff/security state: `security_event(...)` with who/target/ip.
 5. Business rules shared by several routes go to `app/services/`.
 6. Tests in `tests/` (role matrix, cross-daycare 404, validation), run `pytest` and `pyflakes`; add a request to `pruebas.http`; update README and this file.

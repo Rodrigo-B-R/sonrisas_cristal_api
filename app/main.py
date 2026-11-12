@@ -20,7 +20,6 @@ from app.routers import (
     attendance,
     audit,
     catalogs,
-    corrections,
     daycares,
     movements,
     notices,
@@ -99,7 +98,6 @@ app.include_router(staff.router)
 app.include_router(movements.router)
 app.include_router(schedules.router)
 app.include_router(time_records.router)
-app.include_router(corrections.router)
 app.include_router(attendance.router)
 app.include_router(notices.router)
 app.include_router(audit.router)

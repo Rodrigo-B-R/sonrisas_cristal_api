@@ -29,7 +29,7 @@ def get_db() -> Iterator[Session]:
 def set_audit_user(db: Session, user_id: int) -> None:
     """Tell the database triggers who is making the change.
 
-    Call it before writing to registro_entradas, asistencia or correccion_registro, and commit
+    Call it before writing to registro_entradas or asistencia, and commit
     in the same transaction (the setting only lives until the transaction ends).
     """
     if db.get_bind().dialect.name != "postgresql":

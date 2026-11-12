@@ -1,4 +1,4 @@
-"""Clock-in, clock-out and corrections of time records."""
+"""Clock-in, clock-out and manager fixes of time records."""
 
 import math
 import uuid as uuid_lib
@@ -179,7 +179,7 @@ class ProposedTimes:
 
 
 def propose_times(record: TimeRecord, clock_in_at: datetime | None, clock_out_at: datetime | None, clock_out_sent: bool) -> ProposedTimes:
-    """The before/after times of a correction.
+    """The before/after times of a manager fix.
 
     clock_in_at None means "leave it". For the clock-out, clock_out_sent tells "not sent"
     (leave it) from an explicit null (remove it).
