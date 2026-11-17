@@ -1,2 +1,14 @@
-node_modules
+# Secrets
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node (the previous version of the API, tag v1-node)
+node_modules
