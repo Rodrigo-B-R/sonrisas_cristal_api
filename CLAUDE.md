@@ -6,7 +6,7 @@ Context for a new session. Read it before changing anything. The README (Spanish
 
 REST API for the Android app of **Sonrisas de Cristal**, a group of daycares ("estancias") in Monterrey, Mexico. It manages staff, weekly schedules, clock-in/clock-out with GPS, attendance, time corrections, notices, coverage reports and an audit trail.
 
-It is a **migration of a Node.js + Express + Prisma API** (still available at tag `v1-node` and on `main`) to **Python + FastAPI + SQLAlchemy**. The Android app is **not implemented yet**, so the API contract is free to change.
+It is a **migration of a Node.js + Express + Prisma API** (still available in the git history before commit `53a314e` and at tag `v1-node`) to **Python + FastAPI + SQLAlchemy**. The Android app is **not implemented yet**, so the API contract is free to change.
 
 - **Everything is in English**: code, comments, routes, JSON fields, error messages. The README is the exception (Spanish, like the rest of the team's docs). Sample data in the seed (names, positions, room names) is Spanish on purpose.
 - Domain words: `estancia` = **daycare**, `sala` = **room**, `turno` = **shift**, `responsable` = **manager**, `direccion` = **director**, `empleada` = **employee**, `registro de entrada` = **time record**, `aviso` = **notice**, `horario` = **schedule**, `asistencia` = **attendance**, `correccion` = **correction**, `personal` = **staff**, `movimiento` = **movement** (hire/termination/transfer).
@@ -14,9 +14,9 @@ It is a **migration of a Node.js + Express + Prisma API** (still available at ta
 ## 2. Repository and git state
 
 - Repo: `github.com/Rodrigo-B-R/sonrisas_cristal_api`. Database repo (separate): `github.com/Rodrigo-B-R/sonrisas_cristal_db`, locally at `C:\Users\rbeta\sonrisas_cristal_db`.
-- **Branch `fastapi`** holds this implementation. It was created with `git switch --orphan` (no shared history with `main`). **`main` still has the Node version.** Tag `v1-node` marks the last Node commit (`6aea375`).
-- Commits on `fastapi`: `552ac4a` (initial), `723b0d3` (API v1), `870f05e` (logout).
-- Plan to make it the main branch without `--force`: `git switch main; git pull; git rm -r -q .; git checkout fastapi -- .; git commit; git push`. Not done yet. A `git stash` with old Docker/.env edits from before the migration may still exist (`git stash drop` is safe).
+- **`main` holds this FastAPI implementation** (commit `53a314e`, pushed without `--force`). The branch `fastapi` was created with `git switch --orphan`, so it shares no history with the Node code; `main` got it by deleting the Node files and checking out `fastapi -- .`, so the Node history is still in `main`'s log.
+- The last Node commit is `3264114`. Tag `v1-node` is older (`6aea375`); a `v1-node-final` tag on `3264114` may or may not exist.
+- The `fastapi` branch is now redundant (same content as `main`) and can be deleted. A `git stash` with old Docker/.env edits from before the migration may still exist (`git stash drop` is safe).
 - **The user runs git commits/pushes themself.** Do not commit or push unless asked.
 - The user writes Spanish. Answer in Spanish. When asked for "only the essentials", do exactly that and offer the rest.
 - Windows 11. Shells: Git Bash (`Bash` tool) and PowerShell. Python 3.13 on the host (the Docker image uses 3.12; both pass the tests).
@@ -37,7 +37,14 @@ Sync SQLAlchemy was chosen on purpose (simple; routes are plain `def`, FastAPI r
 
 ## 4. Architecture of the deployment
 
-Docker network `sonrisas_net` (created by the DB repo's compose): Prometheus, Grafana (port 3000), PostgreSQL 17 (hostname `postgres`, no published port), **this API** (port 8000), MinIO (S3 storage, **not used by the API yet**), and a **Cloudflare tunnel** (HTTPS) in front of the API. Planned deployment: a VM, as a demo with the seed accounts (the user accepted keeping the seed; see §11).
+**One compose for everything, in a third local folder/repo: `C:\Users\rbeta\sonrisas_cristal_infra`** (sibling of this repo and of `sonrisas_cristal_db`; not on GitHub yet). Run it from there: `docker compose up -d --build`. It builds the images from `../sonrisas_cristal_api` and `../sonrisas_cristal_db`, so the three folders must stay siblings. Compose project name `sonrisas`, network `sonrisas_sonrisas_net` (not `sonrisas_net` any more), volumes `sonrisas_*`.
+
+Services (verified running, Prometheus targets `api`, `postgres`, `prometheus` all UP):
+- `postgres` (PostgreSQL 17, hostname `postgres`, no published port) · `api` (this repo, port 8000) · `pgadmin` (5050) · `postgres_exporter` (user `monitor`, role `pg_monitor`) · `prometheus` (127.0.0.1:9090 only) · `grafana` (3000; datasource and 2 dashboards, **API** and **PostgreSQL**, provisioned from files).
+- **One `.env`** in `sonrisas_cristal_infra` (git-ignored; `.env.example` documents it). It replaces the `.env` of the other two repos for this deployment. `DATABASE_URL` there points to host `postgres` with the percent-encoded `api_user` password. `METRICS_TOKEN` is the same value the API checks and Prometheus sends (Docker secret `/run/secrets/metrics_token`).
+- **Not done yet:** the **Cloudflare tunnel** (when it arrives: remove the published port 8000, set `TRUSTED_PROXIES` to the real subnet of `sonrisas_sonrisas_net`), publishing images to GHCR (then `build:` → `image:`), alerts. **MinIO is not in any compose** (it is also not in the architecture diagram), contrary to what older notes said.
+- Planned deployment: a VM, as a demo with the seed accounts (the user accepted keeping the seed; see §11).
+- The compose files left in this repo and in the DB repo are the **old split setup** (they share the network `sonrisas_net` as `external`); prefer the infra folder. Do not run both at once (same ports).
 
 ## 5. Layout
 
@@ -164,7 +171,7 @@ Day statuses in reports: `present, late, absent, incident` (stored) plus compute
 |---|---|---|---|
 | GET | `/coverage` | M/D | `?date, daycareId` (**required for director**): present vs minimum per room and shift, with `alerts` |
 | GET | `/summary` | D | every daycare on a date: complete vs understaffed |
-| GET | `/statistics` | M/D | period (default this month, max 400 days): hires, terminations, absences, lates, understaffedDays, absenteeism %, byDaycare |
+| GET | `/statistics` | M/D | period (default this month, max 92 days; same limit for `/attendance` and `/export/attendance`): hires, terminations, absences, lates, understaffedDays, absenteeism %, byDaycare |
 | GET | `/export/attendance` | M/D | CSV (UTF-8 BOM, all fields quoted, formula-injection safe) |
 | GET | `/audit` | D | `?startDate,endDate,table,recordId,userId`; last 500 changes |
 
@@ -208,12 +215,13 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 - PostgreSQL 17, 18 tables, schema in `init/01-init.sql` (run only on a fresh volume). Ids are `BIGINT GENERATED BY DEFAULT AS IDENTITY`. Container `sonrisas_postgres`, db name in that repo's `.env`.
 - The API connects as **`api_user`**: `SELECT, INSERT, UPDATE` only (**no DELETE, no DDL**), read-only on `auditoria`. Use the owner (`postgres`) only for `scripts/create_tables.py`.
 - Key constraints the API relies on: one attendance per (user, daycare, date); `absent`/`incident` need `id_motivo_ausencia`; `movimiento_usuario` fields per type (hire: destination only; termination: origin + reason; transfer: origin ≠ destination); `registro_entradas.uuid` unique and `clock_out > clock_in`; `aviso_usuario.leido = (leido_en IS NOT NULL)`; corrections: pending has no resolver, resolved has both resolver and time; `usuario.usuario_login` and `correo` unique.
+- `init/03-monitor-user.sh` creates the `monitor` user (role `pg_monitor`, no table data access) for `postgres_exporter`, from `MONITOR_DB_PASSWORD`; it is skipped if that variable is empty. Like every `init/` script it only runs on an **empty volume**; on an existing DB create the role by hand (see the infra README).
 - Catalogs are created **empty**; `scripts/seed.py` fills them for demos (5 daycares, 9 users, schedules, a welcome notice).
 - **`DATABASE_URL` passwords with special characters (`# * ] ! = ^ @ :`) must be percent-encoded.** The real `api_user` password has such characters. `python -c "import os,urllib.parse as u;print(u.quote(os.environ['API_DB_PASSWORD'],safe=''))"`. **Never print secrets**: a connection error can echo the URL (it happened once in this project).
 
 ## 10. Environment variables (`app/config.py`, `.env.example`)
 
-`DATABASE_URL`*, `JWT_SECRET`*, `JWT_EXPIRE_MINUTES`=60, `TZ`=America/Monterrey, `LATE_TOLERANCE_MINUTES`=5, `ENVIRONMENT`=development, `METRICS_TOKEN`, `LOGIN_RATE_LIMIT`=5/minute, `DEFAULT_RATE_LIMIT`=300/minute, `LOGIN_MAX_FAILURES`=10, `LOGIN_LOCKOUT_MINUTES`=15, `RATE_LIMIT_ENABLED`=true, `TRUSTED_PROXIES`, `SEED_PASSWORD`=Cristal2026, `API_PORT` (compose only). (* required.) Old Node names (`ENTORNO`, `TOLERANCIA_MINUTOS`) no longer exist; unknown variables in `.env` are ignored. `postgres://` and `postgresql://` URLs are rewritten to `postgresql+psycopg://`.
+`DATABASE_URL`*, `JWT_SECRET`*, `JWT_EXPIRE_MINUTES`=60, `TZ`=America/Monterrey, `LATE_TOLERANCE_MINUTES`=5, `ENVIRONMENT`=development, `METRICS_TOKEN`, `LOGIN_RATE_LIMIT`=5/minute, `DEFAULT_RATE_LIMIT`=300/minute, `LOGIN_MAX_FAILURES`=10, `LOGIN_LOCKOUT_MINUTES`=15, `RATE_LIMIT_ENABLED`=true, `TRUSTED_PROXIES`, `SEED_PASSWORD`=Cristal2026, `API_PORT` (compose only). (* required.) In the infra compose these are passed through `environment:` from the infra `.env`; the infra `.env` also holds `POSTGRES_*`, `API_DB_PASSWORD`, `MONITOR_DB_PASSWORD`, `PGADMIN_*`, `GRAFANA_*`. Old Node names (`ENTORNO`, `TOLERANCIA_MINUTOS`) no longer exist; unknown variables in `.env` are ignored. `postgres://` and `postgresql://` URLs are rewritten to `postgresql+psycopg://`.
 
 ## 11. Commands
 
@@ -230,9 +238,11 @@ Seed accounts (password = `SEED_PASSWORD`, default `Cristal2026`): `ana.torres` 
 
 **Seed is intentionally kept in the production image** (the user decided: it is for demo users on a VM). Advice already given: set a private `SEED_PASSWORD` in the VM's `.env`, `ENVIRONMENT=production`, own `JWT_SECRET`/`METRICS_TOKEN`, real `TRUSTED_PROXIES`, do not expose port 8000. `seed.py` also resets passwords/reactivates its accounts when re-run.
 
-**Real-PostgreSQL end-to-end check (44 checks)** — how it was run: rebuild the DB (`docker compose down -v; docker compose up -d --build` in the DB repo; the user explicitly authorized this once because that DB has no data), then run a throwaway `python:3.12-slim` container **on `sonrisas_net`** with the project mounted read-only: copy `app scripts tests requirements*.txt` into `/app`, `pip install -r requirements-dev.txt`, set `DATABASE_URL` (api_user, host `postgres`, password percent-encoded), `JWT_SECRET`, `METRICS_TOKEN`, then `python -m pytest tests`, `python -m scripts.seed`, `python -m tests.e2e_postgres`. `api_user` cannot delete, so **the e2e is not repeatable on the same data: rebuild the DB between runs.** Filter output so the password never appears. The e2e covers: audit authors via `set_config`, CHECK/UNIQUE constraints, UTC timestamps, token invalidation on termination, transfer scoping, `/metrics` pool gauge.
+**Full stack (infra folder):** `cd ..\sonrisas_cristal_infra; docker compose up -d --build`; demo data: `docker compose exec api python -m scripts.seed`; stop with `docker compose down` (**never `-v` without asking**: it deletes the DB volume). Check `http://localhost:9090/targets` (all UP) and Grafana at `:3000`.
 
-Docker: building/running the image was verified (healthy, non-root, no `/docs` in production). Do not run `docker compose up` in this repo casually: an old Node container `sonrisas_api` (port 3000) may exist and share the name.
+**Real-PostgreSQL end-to-end check (44 checks)** — how it was run (written before the infra compose existed; adapt names): rebuild the DB (`docker compose down -v; docker compose up -d --build`; the user explicitly authorized this once because that DB has no data), then run a throwaway `python:3.12-slim` container **on the compose network (`sonrisas_sonrisas_net` now)** with the project mounted read-only: copy `app scripts tests requirements*.txt` into `/app`, `pip install -r requirements-dev.txt`, set `DATABASE_URL` (api_user, host `postgres`, password percent-encoded), `JWT_SECRET`, `METRICS_TOKEN`, then `python -m pytest tests`, `python -m scripts.seed`, `python -m tests.e2e_postgres`. `api_user` cannot delete, so **the e2e is not repeatable on the same data: rebuild the DB between runs.** Filter output so the password never appears. The e2e covers: audit authors via `set_config`, CHECK/UNIQUE constraints, UTC timestamps, token invalidation on termination, transfer scoping, `/metrics` pool gauge.
+
+Docker: building/running the image was verified (healthy, non-root, no `/docs` in production). Do not run `docker compose up` in this repo (old split setup, container name `sonrisas_api`, port 8000 conflicts with the infra stack).
 
 ## 12. Gotchas learned (save yourself time)
 
@@ -263,10 +273,11 @@ Docker: building/running the image was verified (healthy, non-root, no `/docs` i
 - **In-memory state** (rate limit counters, login lockout, logout denylist): lost on restart, per worker; hence one worker. Move to Redis before scaling. A restart re-enables tokens closed with `/logout` until they expire (max 60 min).
 - Changing or resetting a password does **not** revoke open sessions (would need Redis or a DB column such as a session version, which lives in `sonrisas_cristal_db`). The user was offered "revoke all sessions on password change" and chose to leave it out for now.
 - No refresh tokens; no pagination on list endpoints (Node had none either); `/statistics` recomputes day by day (fine for 5 daycares).
-- **MinIO is in the architecture but unused**; ask the user what it is for before building anything.
+- **MinIO** appeared in older notes but is in no compose and not in the diagram; ask the user before building anything for it.
+- The infra folder is not a git repo on GitHub yet (it has a local `git init`, no commits). Old volumes `sonrisas_cristal_db_postgres_data` / `_pgadmin_data` from the previous split setup still exist (the new stack starts with an empty DB); delete them only when the user says so.
+- Uncommitted in the DB repo: `init/03-monitor-user.sh`, the `MONITOR_DB_PASSWORD` line in its compose, and a new diagram PNG.
 - Error messages are English strings; if the Android app shows them, consider adding stable error codes.
 - `pruebas.http` does not yet have a `POST /logout` request.
 - `sonrisas_cristal.postman_collection.json` is **obsolete** (Node routes). Use Postman → Import → `http://localhost:8000/openapi.json` (needs `ENVIRONMENT=development`). Delete the old file when the user agrees.
 - Images `Arquitectura del sistema@1x (1).png` and `base_datos.jpeg` are in the repo root (could move to `docs/`).
-- The `fastapi` branch has not been merged into `main` yet (see §2).
 - No CI yet. Suggested: GitHub Actions running `pytest` and the e2e against a Postgres service container (init SQL from the DB repo).

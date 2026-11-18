@@ -81,7 +81,7 @@ def statistics(
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),
     daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
 ):
-    start, end = read_period(start_date, end_date, default_start=first_of_month(today()), max_days=400)
+    start, end = read_period(start_date, end_date, default_start=first_of_month(today()), max_days=92)
     return build_statistics(db, daycare_scope(user, daycare_id), start, end)
 
 
@@ -100,7 +100,7 @@ def export_attendance(
     daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
 ):
     """Attendance of the period as a CSV file."""
-    start, end = read_period(start_date, end_date, default_start=first_of_month(today()), max_days=400)
+    start, end = read_period(start_date, end_date, default_start=first_of_month(today()), max_days=92)
     end = min(end, today())
     start = min(start, end)
     scope = daycare_scope(user, daycare_id)

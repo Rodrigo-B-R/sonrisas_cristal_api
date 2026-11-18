@@ -34,8 +34,13 @@ def route_label(request: Request, status: int) -> str:
     return "not_found" if status == 404 else "other"
 
 
+KNOWN_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+
+
 def observe_request(request: Request, status: int, seconds: float) -> None:
-    labels = {"method": request.method, "route": route_label(request, status), "status": str(status)}
+    # A client can send any word as the HTTP method: group the unknown ones so the series stay bounded
+    method = request.method if request.method in KNOWN_METHODS else "other"
+    labels = {"method": method, "route": route_label(request, status), "status": str(status)}
     REQUESTS.labels(**labels).inc()
     DURATION.labels(**labels).observe(seconds)
 

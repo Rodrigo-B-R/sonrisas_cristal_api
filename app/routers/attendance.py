@@ -47,7 +47,7 @@ def _resolve_reason(db, status: str, reason_id: int | None, description: str | N
 
 
 def _period(start_date: date | None, end_date: date | None) -> tuple[date, date]:
-    start, end = read_period(start_date, end_date, max_days=400)
+    start, end = read_period(start_date, end_date, max_days=92)
     end = min(end, today())  # the future has no attendance yet
     return min(start, end), end
 

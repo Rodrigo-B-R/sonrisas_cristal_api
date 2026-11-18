@@ -187,6 +187,19 @@ def test_metrics_content(client, login):
     assert "db_pool_connections" in text
 
 
+def test_metrics_group_unknown_http_methods(client):
+    client.request("MADEUP", "/staff")
+    text = client.get("/metrics", headers={"Authorization": "Bearer metrics-test-token"}).text
+    assert 'method="other"' in text and "MADEUP" not in text
+
+
+def test_report_periods_are_limited_to_92_days(client, login):
+    manager = login("manager_a")
+    for path in ("/statistics", "/attendance", "/export/attendance"):
+        assert client.get(f"{path}?startDate=2026-01-01&endDate=2026-04-03", headers=manager).status_code == 400  # 93 days
+        assert client.get(f"{path}?startDate=2026-01-01&endDate=2026-04-02", headers=manager).status_code == 200  # 92 days
+
+
 def test_metrics_are_off_without_a_token(client, monkeypatch):
     from app.config import settings
 
