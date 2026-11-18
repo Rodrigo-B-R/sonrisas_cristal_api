@@ -141,7 +141,7 @@ No DELETE anywhere: the DB user cannot delete.
 |---|---|---|---|
 | GET | `/time-records/status` | Any | `{inside, openRecord, todayShifts, location}` |
 | GET | `/time-records` | Any | employee: own; manager: daycare; director: all. `?startDate,endDate,userId,withinZone,daycareId` |
-| POST | `/time-records/clock-in` | E/M | `{uuid?, occurredAt?, latitude?, longitude?, withinZone?, roomId?, shiftId?}` → 201 `{record, attendance, repeated:false}`; **same uuid again → 200 `repeated:true`**; `roomId` and `shiftId` together or neither. Also creates the day's attendance (present/late) |
+| POST | `/time-records/clock-in` | E/M | `{uuid?, occurredAt?, latitude?, longitude?, withinZone?(deprecated, ignored), roomId?, shiftId?}`; the server computes `withinZone` from the coordinates (none sent → saved as `false`, flagged for the manager); `occurredAt` max 48 h old → 201 `{record, attendance, repeated:false}`; **same uuid again → 200 `repeated:true`**; `roomId` and `shiftId` together or neither. Also creates the day's attendance (present/late) |
 | POST | `/time-records/clock-out` | E/M | `{occurredAt?}`; same-second exit is saved +1 s (DB needs out > in) |
 | POST | `/time-records/batch` | M | `{userIds, occurredAt?, roomId?, shiftId?}` → 201 `{recorded, skipped}` |
 | PUT | `/time-records/{id}` | M | `{clockInAt?, clockOutAt?}`; `clockOutAt: null` removes it; the before/after is kept by the audit triggers |

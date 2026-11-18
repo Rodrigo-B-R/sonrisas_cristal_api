@@ -42,10 +42,12 @@ def distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float
 
 
 def is_within_zone(location: Location, latitude: float | None, longitude: float | None, within_zone: bool | None) -> bool:
-    """With latitude and longitude it is calculated; without them, what the client says (true by default)."""
+    """With latitude and longitude it is calculated from them. Without them there is no evidence, so it is
+    False (saved anyway, flagged for the manager). within_zone is only trusted when our own code passes it
+    (a manager clocking people in); the value a phone sends in the request body is never used."""
     if latitude is not None and longitude is not None:
         return distance_meters(latitude, longitude, location.latitude, location.longitude) <= location.radius_meters
-    return True if within_zone is None else within_zone
+    return bool(within_zone)
 
 
 def pick_room_and_shift(

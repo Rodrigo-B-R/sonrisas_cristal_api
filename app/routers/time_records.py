@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.access import can_access_daycare, daycare_scope, require_found
+from app.constants import MAX_CLIENT_TIMESTAMP_AGE_HOURS
 from app.database import set_audit_user
 from app.dependencies import CurrentUser, DbSession, EmployeeOrManager, ManagerOnly, get_current_user
 from app.errors import ApiError
@@ -15,7 +16,7 @@ from app.schemas import BatchIn, BatchOut, ClockInIn, ClockInOut, ClockOutIn, Cl
 from app.services import records as record_service
 from app.services.records import record_options
 from app.services.schedules import shifts_of_user_on
-from app.timeutils import day_end, day_start, now_utc, read_period, read_timestamp, today
+from app.timeutils import day_end, day_start, read_period, read_timestamp, today
 
 router = APIRouter(prefix="/time-records", tags=["Time records"], dependencies=[Depends(get_current_user)])
 
@@ -75,7 +76,7 @@ def clock_in(body: ClockInIn, response: Response, user: EmployeeOrManager, db: D
     Sending the same uuid again (the phone lost the connection) returns the record already saved, with 200.
     """
     _require_room_and_shift_together(body.room_id, body.shift_id)
-    when = read_timestamp(body.occurred_at)
+    when = read_timestamp(body.occurred_at, MAX_CLIENT_TIMESTAMP_AGE_HOURS)
     result = record_service.clock_in(
         db,
         user,
@@ -85,7 +86,7 @@ def clock_in(body: ClockInIn, response: Response, user: EmployeeOrManager, db: D
         record_uuid=body.uuid,
         latitude=body.latitude,
         longitude=body.longitude,
-        within_zone=body.within_zone,
+        # body.within_zone is deliberately NOT passed: the server decides from the coordinates
         room_id=body.room_id,
         shift_id=body.shift_id,
     )
@@ -97,7 +98,7 @@ def clock_in(body: ClockInIn, response: Response, user: EmployeeOrManager, db: D
 
 @router.post("/clock-out", response_model=TimeRecordOut)
 def clock_out(body: ClockOutIn, user: EmployeeOrManager, db: DbSession):
-    return record_service.clock_out(db, user, read_timestamp(body.occurred_at))
+    return record_service.clock_out(db, user, read_timestamp(body.occurred_at, MAX_CLIENT_TIMESTAMP_AGE_HOURS))
 
 
 @router.post("/batch", response_model=BatchOut, status_code=201)

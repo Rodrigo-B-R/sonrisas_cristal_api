@@ -25,7 +25,7 @@ def test_clock_in_uses_the_schedule_and_marks_present(client, login, world):
     assert record["shift"]["startTime"] == "07:00"
     assert record["roomId"] == world["room_a"]
     assert record["source"] == "app"
-    assert record["withinZone"] is True
+    assert record["withinZone"] is False  # no coordinates sent: no evidence, flagged for the manager
     # 07:02 in Monterrey (UTC-6) is 13:02 UTC, and times come out as UTC with milliseconds
     assert record["clockInAt"] == f"{DAY}T13:02:00.000Z"
     assert record["clockOutAt"] is None
@@ -108,6 +108,31 @@ def test_position_decides_within_zone(client, login):
     assert far["withinZone"] is False  # saved anyway, for the manager to review
     flagged = client.get(f"/time-records?startDate={DAY}&endDate={DAY}&withinZone=false", headers=login("manager_b")).json()
     assert [item["id"] for item in flagged] == [far["id"]]
+
+
+def test_the_client_cannot_claim_to_be_within_the_zone(client, login):
+    # still accepted (old apps send it), but ignored: without coordinates it is flagged
+    claimed = clock_in(client, login("employee_a"), withinZone=True).json()["record"]
+    assert claimed["withinZone"] is False
+    # with coordinates, the distance wins over what the client says
+    far = clock_in(client, login("employee_b"), latitude=20.0, longitude=-100.4, withinZone=True).json()["record"]
+    assert far["withinZone"] is False
+
+
+def test_old_timestamps_are_refused_for_clock_in_and_out(client, login):
+    old = (today() - timedelta(days=4)).isoformat()
+    headers = login("employee_a")
+    response = client.post("/time-records/clock-in", headers=headers, json={"occurredAt": f"{old}T07:00:00"})
+    assert response.status_code == 400
+    assert "hours old" in response.json()["error"]
+    assert clock_in(client, headers).status_code == 201
+    late_out = client.post("/time-records/clock-out", headers=headers, json={"occurredAt": f"{old}T15:00:00"})
+    assert late_out.status_code == 400
+
+
+def test_daycare_radius_has_a_limit(client, login):
+    body = {"name": "Big", "latitude": 25.7, "longitude": -100.3, "radiusMeters": 5000}
+    assert client.post("/daycares", headers=login("director"), json=body).status_code == 400
 
 
 def test_invalid_coordinates_are_rejected(client, login):

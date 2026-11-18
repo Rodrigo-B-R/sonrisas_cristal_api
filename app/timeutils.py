@@ -87,11 +87,12 @@ def read_period(
     return start, end
 
 
-def read_timestamp(value: datetime | None) -> datetime:
+def read_timestamp(value: datetime | None, max_age_hours: int | None = None) -> datetime:
     """A time sent by the client (for example a clock-in made offline that arrives later).
 
     No value means "now". A time without a UTC offset is read in the daycares' time zone.
-    It cannot be in the future (a few minutes of clock difference are allowed).
+    It cannot be in the future (a few minutes of clock difference are allowed), nor older
+    than max_age_hours when that is given.
     """
     if value is None:
         return now_utc()
@@ -100,4 +101,6 @@ def read_timestamp(value: datetime | None) -> datetime:
     value = value.astimezone(timezone.utc)
     if value > now_utc() + timedelta(seconds=CLOCK_SKEW_SECONDS):
         raise ApiError(400, "Invalid timestamp: it cannot be in the future")
+    if max_age_hours is not None and value < now_utc() - timedelta(hours=max_age_hours):
+        raise ApiError(400, f"Invalid timestamp: it cannot be more than {max_age_hours} hours old")
     return value

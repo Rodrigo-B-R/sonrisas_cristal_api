@@ -230,7 +230,7 @@ class ShiftUpdateIn(In):
 
 Latitude = Annotated[float, Field(ge=-90, le=90)]
 Longitude = Annotated[float, Field(ge=-180, le=180)]
-Radius = Annotated[int, Field(ge=0)]
+Radius = Annotated[int, Field(ge=0, le=1000)]  # a huge radius would make everyone "inside"
 
 
 class DaycareIn(In):
@@ -433,7 +433,7 @@ class ClockInIn(In):
     occurred_at: datetime | None = None  # a clock-in made offline that arrives later
     latitude: Latitude | None = None
     longitude: Longitude | None = None
-    within_zone: bool | None = None  # used only when latitude and longitude are not sent
+    within_zone: bool | None = None  # deprecated and IGNORED (kept so existing apps do not break): the server decides
     room_id: Id | None = None
     shift_id: Id | None = None
 

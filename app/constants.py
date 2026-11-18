@@ -54,3 +54,5 @@ NO_END = date(2099, 12, 31)
 
 # A client clock may be a little ahead of ours; beyond this a timestamp is "in the future".
 CLOCK_SKEW_SECONDS = 5 * 60
+# An employee's own clock-in/out may be this old (offline queue); managers fixing records have no limit
+MAX_CLIENT_TIMESTAMP_AGE_HOURS = 48
