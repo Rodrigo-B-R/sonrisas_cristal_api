@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import Role, User
-from app.security import TokenDenylist, limiter, login_guard
+from app.security import TokenDenylist, limiter, login_guard, password_guard
 from tests.conftest import PASSWORD
 
 
@@ -279,3 +279,44 @@ def test_change_password(client, login):
     assert ok.status_code == 200
     assert client.post("/login", json={"username": "employee_a", "password": PASSWORD}).status_code == 401
     assert client.post("/login", json={"username": "employee_a", "password": "Newpass123"}).status_code == 200
+
+
+def _change_password(client, headers, current):
+    return client.put(
+        "/profile/password", headers=headers, json={"currentPassword": current, "newPassword": "Newpass123"}
+    )
+
+
+def test_password_change_is_rate_limited_per_ip(client, login):
+    headers = login("employee_a")
+    limiter.enabled = True
+    limiter.reset()
+    statuses = [_change_password(client, headers, "nope").status_code for _ in range(7)]
+    assert statuses[:5] == [401] * 5
+    assert statuses[5:] == [429, 429]
+
+
+def test_password_change_locks_after_too_many_wrong_passwords(client, login):
+    headers = login("employee_a")
+    for _ in range(settings.login_max_failures):
+        assert _change_password(client, headers, "nope").status_code == 401
+    # Even the right current password is refused now
+    locked = _change_password(client, headers, PASSWORD)
+    assert locked.status_code == 429
+    assert "Retry-After" in locked.headers
+    # Another user is not affected
+    assert _change_password(client, login("employee_b"), PASSWORD).status_code == 200
+    # The lockout is not a login lockout: the person can still log in
+    assert client.post("/login", json={"username": "employee_a", "password": PASSWORD}).status_code == 200
+
+
+def test_password_change_lockout_unlocks_and_success_resets(client, login):
+    headers = login("employee_a")
+    for _ in range(settings.login_max_failures):
+        _change_password(client, headers, "nope")
+    for attempts in password_guard._attempts.values():
+        attempts.locked_until = 0  # time passes
+    for _ in range(settings.login_max_failures - 1):
+        _change_password(client, headers, "nope")
+    assert _change_password(client, headers, PASSWORD).status_code == 200  # still allowed; resets the count
+    assert not password_guard._attempts

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
 from app.access import daycare_scope, require_daycare_access, require_found
-from app.dependencies import CurrentUser, DbSession, ManagerOnly, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.models import Room
 from app.schemas import RoomIn, RoomOut, RoomUpdateIn
 
@@ -33,7 +33,7 @@ def get_room(room_id: int, user: CurrentUser, db: DbSession):
 
 
 @router.post("", response_model=RoomOut, status_code=201)
-def create_room(body: RoomIn, user: ManagerOnly, db: DbSession):
+def create_room(body: RoomIn, user: CurrentUser, db: DbSession):
     room = Room(name=body.name, min_staff=body.min_staff, daycare_id=user.daycare_id)
     db.add(room)
     db.commit()
@@ -41,7 +41,7 @@ def create_room(body: RoomIn, user: ManagerOnly, db: DbSession):
 
 
 @router.put("/{room_id}", response_model=RoomOut)
-def update_room(room_id: int, body: RoomUpdateIn, user: ManagerOnly, db: DbSession):
+def update_room(room_id: int, body: RoomUpdateIn, user: CurrentUser, db: DbSession):
     room = require_found(db.get(Room, room_id), "Room not found")
     require_daycare_access(user, room.daycare_id, "Room not found")
     if body.name is not None:

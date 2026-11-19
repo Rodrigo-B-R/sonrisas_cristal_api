@@ -1,0 +1,91 @@
+# Who may call what. One line per route:  p, <role>, <route template>, <HTTP method>
+# Everything that is not listed here is DENIED (403), so a new route is closed until it is added.
+# This file answers "may this ROLE call this route". Which DATA the caller sees (their own
+# daycare, never another one) is decided later, in the queries (app/access.py).
+#
+# Not listed because they do not need a session: GET /, POST /login, GET /metrics (own token).
+
+# "authenticated" is every role: it keeps the routes open to everybody short.
+g, employee, authenticated
+g, manager, authenticated
+g, director, authenticated
+
+# ── Any logged-in user ───────────────────────────────────────────────
+p, authenticated, /logout, POST
+p, authenticated, /profile, GET
+p, authenticated, /profile/password, PUT
+p, authenticated, /catalogs, GET
+p, authenticated, /daycares, GET
+p, authenticated, /daycares/{daycare_id}, GET
+p, authenticated, /rooms, GET
+p, authenticated, /rooms/{room_id}, GET
+p, authenticated, /schedules/me, GET
+p, authenticated, /time-records, GET
+p, authenticated, /time-records/status, GET
+p, authenticated, /attendance/me, GET
+p, authenticated, /notices/inbox, GET
+p, authenticated, /notices/inbox/{notice_id}, GET
+p, authenticated, /notices/{notice_id}/read, POST
+
+# ── Employee and manager ─────────────────────────────────────────────
+p, employee, /time-records/clock-in, POST
+p, employee, /time-records/clock-out, POST
+p, manager, /time-records/clock-in, POST
+p, manager, /time-records/clock-out, POST
+
+# ── Manager only ─────────────────────────────────────────────────────
+p, manager, /rooms, POST
+p, manager, /rooms/{room_id}, PUT
+p, manager, /schedules/{user_id}, PUT
+p, manager, /time-records/batch, POST
+p, manager, /time-records/{record_id}, PUT
+p, manager, /attendance, POST
+p, manager, /attendance/{attendance_id}, PUT
+
+# ── Manager and director ─────────────────────────────────────────────
+p, manager, /staff, GET
+p, director, /staff, GET
+p, manager, /staff, POST
+p, director, /staff, POST
+p, manager, /staff/{user_id}, GET
+p, director, /staff/{user_id}, GET
+p, manager, /staff/{user_id}, PUT
+p, director, /staff/{user_id}, PUT
+p, manager, /staff/{user_id}/terminate, POST
+p, director, /staff/{user_id}/terminate, POST
+p, manager, /staff/{user_id}/transfer, POST
+p, director, /staff/{user_id}/transfer, POST
+p, manager, /staff/{user_id}/password, POST
+p, director, /staff/{user_id}/password, POST
+p, manager, /movements, GET
+p, director, /movements, GET
+p, manager, /schedules, GET
+p, director, /schedules, GET
+p, manager, /schedules/{user_id}, GET
+p, director, /schedules/{user_id}, GET
+p, manager, /attendance, GET
+p, director, /attendance, GET
+p, manager, /attendance/{user_id}, GET
+p, director, /attendance/{user_id}, GET
+p, manager, /notices, GET
+p, director, /notices, GET
+p, manager, /notices, POST
+p, director, /notices, POST
+p, manager, /notices/{notice_id}, GET
+p, director, /notices/{notice_id}, GET
+p, manager, /coverage, GET
+p, director, /coverage, GET
+p, manager, /statistics, GET
+p, director, /statistics, GET
+p, manager, /export/attendance, GET
+p, director, /export/attendance, GET
+
+# ── Director only ────────────────────────────────────────────────────
+p, director, /daycares, POST
+p, director, /daycares/{daycare_id}, PUT
+p, director, /catalogs/positions, POST
+p, director, /catalogs/termination-reasons, POST
+p, director, /catalogs/absence-reasons, POST
+p, director, /catalogs/shifts/{shift_id}, PUT
+p, director, /summary, GET
+p, director, /audit, GET

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
 from app.access import require_found
-from app.dependencies import DbSession, DirectorOnly, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.models import AbsenceReason, Position, Role, Shift, TerminationReason
 from app.schemas import (
     AbsenceReasonIn,
@@ -36,7 +36,7 @@ def get_catalogs(db: DbSession):
 
 
 @router.post("/absence-reasons", response_model=AbsenceReasonOut, status_code=201)
-def create_absence_reason(body: AbsenceReasonIn, user: DirectorOnly, db: DbSession):
+def create_absence_reason(body: AbsenceReasonIn, user: CurrentUser, db: DbSession):
     """409 if the description already exists."""
     reason = AbsenceReason(description=body.description)
     db.add(reason)
@@ -45,7 +45,7 @@ def create_absence_reason(body: AbsenceReasonIn, user: DirectorOnly, db: DbSessi
 
 
 @router.post("/positions", response_model=PositionOut, status_code=201)
-def create_position(body: NameIn, user: DirectorOnly, db: DbSession):
+def create_position(body: NameIn, user: CurrentUser, db: DbSession):
     position = Position(name=body.name)
     db.add(position)
     db.commit()
@@ -53,7 +53,7 @@ def create_position(body: NameIn, user: DirectorOnly, db: DbSession):
 
 
 @router.post("/termination-reasons", response_model=TerminationReasonOut, status_code=201)
-def create_termination_reason(body: NameIn, user: DirectorOnly, db: DbSession):
+def create_termination_reason(body: NameIn, user: CurrentUser, db: DbSession):
     reason = TerminationReason(name=body.name)
     db.add(reason)
     db.commit()
@@ -61,7 +61,7 @@ def create_termination_reason(body: NameIn, user: DirectorOnly, db: DbSession):
 
 
 @router.put("/shifts/{shift_id}", response_model=ShiftOut)
-def update_shift(shift_id: int, body: ShiftUpdateIn, user: DirectorOnly, db: DbSession):
+def update_shift(shift_id: int, body: ShiftUpdateIn, user: CurrentUser, db: DbSession):
     shift = require_found(db.get(Shift, shift_id))
     if body.name is not None:
         shift.name = body.name

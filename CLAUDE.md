@@ -55,7 +55,8 @@ app/
   database.py        engine, SessionLocal (expire_on_commit=False), get_db, set_audit_user
   models.py          18 tables with English names over the real Spanish columns; UTCDateTime type
   schemas.py         Pydantic: `In` (requests, extra="forbid", camelCase) and `Out` (responses, from_attributes)
-  dependencies.py    get_current_user, require_role, aliases (ManagerOnly, DirectorOnly, ManagerOrDirector, EmployeeOrManager, CurrentUser, DbSession)
+  dependencies.py    get_current_user (token + user from DB + Casbin check), aliases (CurrentUser, DbSession)
+  authz/             Casbin engine: model.conf (RBAC), policy.csv (role -> route template + method), is_allowed()
   access.py          daycare_scope, can_access_daycare, require_found (isolation between daycares)
   security.py        bcrypt, JWT (+jti), TokenDenylist, get_client_ip, limiter (slowapi), LoginGuard
   errors.py          ApiError and every exception handler; common_headers
@@ -93,7 +94,7 @@ Query periods use `?startDate=&endDate=` (YYYY-MM-DD). Directors can filter with
 |---|---|---|
 | POST | `/logout` | Revokes THIS token (jti). 401 `Token revoked` afterwards |
 | GET | `/profile` | User with role, position, daycare (+location, rooms) |
-| PUT | `/profile/password` | `{currentPassword, newPassword}`; 400 with `missing: [...]` if weak |
+| PUT | `/profile/password` | `{currentPassword, newPassword}`; 400 with `missing: [...]` if weak; rate-limited (5/min/IP) and locked per user after 10 wrong current passwords (429 + `Retry-After`) |
 
 ### Catalogs
 | Method | Path | Role | Notes |
@@ -184,7 +185,7 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 
 **Authentication.** JWT HS256 with only `sub` (user id), `jti`, `iat`, `exp` (60 min). `jti` is **required**. No role/daycare in the token. `get_current_user` decodes (algorithm fixed to HS256), checks the denylist, then **loads the user from the DB on every request** (one PK query with the role joined) and rejects inactive users with 401. So terminations, transfers and role changes apply on the very next request. Old Node tokens are invalid (they had no `sub`/`jti`).
 
-**Authorization = three layers.** (1) `get_current_user` → 401. (2) `require_role(...)` aliases → 403 `Your role cannot do this`. (3) data scope via `access.py` → **404 (not 403)** for another daycare's data, so existence is not confirmed. Every router except `session` and `metrics` also declares `dependencies=[Depends(get_current_user)]` or a `require_role(...)` dependency (secure by default: a new route in them is authenticated even if you forget the parameter). Managers never see directors; managers only modify employees (director: anyone).
+**Authorization = three layers.** (1) `get_current_user` → 401. (2) **Casbin** (`app/authz/`): `get_current_user` calls `authorize()`, which asks `is_allowed(role, route template, method)`; the rules are in `policy.csv` (the `authenticated` group = every role). **Default deny: a route not listed answers 403** (test `test_every_route_is_in_the_policy_or_public` fails if you add a route and forget the policy line; public routes `/`, `/login`, `/metrics` are exempt). 403 `Your role cannot do this`. The route template (`/staff/{user_id}`) is what is matched, taken from `request.scope["route"].path_format`. (3) data scope via `access.py` → **404 (not 403)** for another daycare's data, so existence is not confirmed. Every router except `session` and `metrics` also declares `dependencies=[Depends(get_current_user)]` or takes `CurrentUser` (secure by default). Managers never see directors; managers only modify employees (director: anyone) — those two rules are data rules and stay in Python.
 
 **Validation.** Pydantic `In` models: camelCase aliases, `extra="forbid"` (no mass assignment), stripped strings. Validation errors → `400 {"error":"Invalid data","details":[{"in","field","message"}]}` (input values are never echoed). Domain errors raise `ApiError(status, message, **extra)`. One format everywhere: `{"error": "..."}`. IntegrityError (UNIQUE→409, FK→409, CHECK/NOT NULL→400), DataError→400, unhandled→500 `{"error":"Internal error","requestId"}` (stack only in the log).
 
@@ -204,8 +205,8 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 - **A02 Misconfiguration:** `/docs`, `/redoc`, `/openapi.json` only when `ENVIRONMENT != production`; HSTS in production; `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Request-ID` on **every** response (including 500s: `common_headers` in `errors.py`); `/metrics` disabled without token; non-root Docker user.
 - **A04 Crypto:** bcrypt cost 12 (tests lower it to 4), 72-byte limit handled, HS256 only, `JWT_SECRET` ≥ 32 chars and not the example value.
 - **A05 Injection:** SQLAlchemy only (no raw SQL except `set_config`, parameterized); CSV cells starting with `= + - @` are prefixed with `'`.
-- **A07 Authentication:** per-IP rate limit on `/login` (`LOGIN_RATE_LIMIT`, 5/min) and on every route (`DEFAULT_RATE_LIMIT`, 300/min, per route); **account lockout** after `LOGIN_MAX_FAILURES` (10) failures per username → 15 min (429 + `Retry-After`); identical 401 and **equal timing** for unknown user / wrong password / inactive (dummy bcrypt check); password policy (8+ chars, upper+lower, digit, differs from previous; also enforced on a manager-supplied initial password); `POST /logout` with a `jti` denylist.
-- **A09 Logging:** JSON, one line per request (`app.request`: request_id, method, path, status, duration_ms, user_id, ip) and security events (`app.security`): `login_success, login_failed(reason), account_locked, login_locked, rate_limited, logout, auth_missing_token, auth_invalid_token, auth_expired_token, auth_revoked_token, auth_inactive_user, access_denied, password_changed, password_change_failed, password_reset, role_changed, staff_created, staff_terminated, staff_transferred, metrics_denied`. Passwords/tokens never logged; JSON escaping prevents log forging; user-supplied strings are clipped.
+- **A07 Authentication:** per-IP rate limit on `/login` (`LOGIN_RATE_LIMIT`, 5/min) and on every route (`DEFAULT_RATE_LIMIT`, 300/min, per route); **`PUT /profile/password`** has its own limit (`PASSWORD_CHANGE_RATE_LIMIT`, 5/min) and a per-user lockout (`password_guard`, same thresholds as the login; a stolen token cannot brute-force the current password); **account lockout** after `LOGIN_MAX_FAILURES` (10) failures per username → 15 min (429 + `Retry-After`); identical 401 and **equal timing** for unknown user / wrong password / inactive (dummy bcrypt check); password policy (8+ chars, upper+lower, digit, differs from previous; also enforced on a manager-supplied initial password); `POST /logout` with a `jti` denylist.
+- **A09 Logging:** JSON, one line per request (`app.request`: request_id, method, path, status, duration_ms, user_id, ip) and security events (`app.security`): `login_success, login_failed(reason), account_locked, login_locked, rate_limited, logout, auth_missing_token, auth_invalid_token, auth_expired_token, auth_revoked_token, auth_inactive_user, access_denied, password_changed, password_change_failed, password_change_locked, password_change_blocked, password_reset, role_changed, staff_created, staff_terminated, staff_transferred, metrics_denied`. Passwords/tokens never logged; JSON escaping prevents log forging; user-supplied strings are clipped.
 - **A10 Exceptional conditions:** global handlers, generic 500 with `requestId`.
 
 **Client IP behind the Cloudflare tunnel.** All requests arrive from the tunnel container. `get_client_ip` only believes `CF-Connecting-IP` (or the last `X-Forwarded-For`) when the TCP peer is inside `TRUSTED_PROXIES` (CIDRs; `.env.example` suggests `172.16.0.0/12`; use the real `sonrisas_net` subnet). Empty `TRUSTED_PROXIES` behind the tunnel would make all users share one 5/min login limit. Anyone reaching port 8000 directly from a trusted range could spoof the header (only bypasses the IP limit; the account lockout still protects).
@@ -221,7 +222,7 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 
 ## 10. Environment variables (`app/config.py`, `.env.example`)
 
-`DATABASE_URL`*, `JWT_SECRET`*, `JWT_EXPIRE_MINUTES`=60, `TZ`=America/Monterrey, `LATE_TOLERANCE_MINUTES`=5, `ENVIRONMENT`=development, `METRICS_TOKEN`, `LOGIN_RATE_LIMIT`=5/minute, `DEFAULT_RATE_LIMIT`=300/minute, `LOGIN_MAX_FAILURES`=10, `LOGIN_LOCKOUT_MINUTES`=15, `RATE_LIMIT_ENABLED`=true, `TRUSTED_PROXIES`, `SEED_PASSWORD`=Cristal2026, `API_PORT` (compose only). (* required.) In the infra compose these are passed through `environment:` from the infra `.env`; the infra `.env` also holds `POSTGRES_*`, `API_DB_PASSWORD`, `MONITOR_DB_PASSWORD`, `PGADMIN_*`, `GRAFANA_*`. Old Node names (`ENTORNO`, `TOLERANCIA_MINUTOS`) no longer exist; unknown variables in `.env` are ignored. `postgres://` and `postgresql://` URLs are rewritten to `postgresql+psycopg://`.
+`DATABASE_URL`*, `JWT_SECRET`*, `JWT_EXPIRE_MINUTES`=60, `TZ`=America/Monterrey, `LATE_TOLERANCE_MINUTES`=5, `ENVIRONMENT`=development, `METRICS_TOKEN`, `LOGIN_RATE_LIMIT`=5/minute, `PASSWORD_CHANGE_RATE_LIMIT`=5/minute, `DEFAULT_RATE_LIMIT`=300/minute, `LOGIN_MAX_FAILURES`=10, `LOGIN_LOCKOUT_MINUTES`=15, `RATE_LIMIT_ENABLED`=true, `TRUSTED_PROXIES`, `SEED_PASSWORD`=Cristal2026, `API_PORT` (compose only). (* required.) In the infra compose these are passed through `environment:` from the infra `.env`; the infra `.env` also holds `POSTGRES_*`, `API_DB_PASSWORD`, `MONITOR_DB_PASSWORD`, `PGADMIN_*`, `GRAFANA_*`. Old Node names (`ENTORNO`, `TOLERANCIA_MINUTOS`) no longer exist; unknown variables in `.env` are ignored. `postgres://` and `postgresql://` URLs are rewritten to `postgresql+psycopg://`.
 
 ## 11. Commands
 
@@ -261,7 +262,7 @@ Docker: building/running the image was verified (healthy, non-root, no `/docs` i
 ## 13. How to add an endpoint
 
 1. Request/response models in `app/schemas.py` (`In` / `Out`; translate DB values with `_translate`; `Date` alias for dates).
-2. Route in the right `app/routers/*.py`: take the role alias (`ManagerOnly`...) and `DbSession`; scope every query with `daycare_scope`/`can_access_daycare` and answer 404 for other daycares; raise `ApiError`.
+2. Route in the right `app/routers/*.py`: take `CurrentUser` and `DbSession`; **add the route (template + method) to `app/authz/policy.csv` for every role that may call it** (otherwise 403 for everybody); scope every query with `daycare_scope`/`can_access_daycare` and answer 404 for other daycares; raise `ApiError`.
 3. If it writes to `registro_entradas` or `asistencia`: `set_audit_user(db, user.id)` first, commit in the same transaction.
 4. If it changes staff/security state: `security_event(...)` with who/target/ip.
 5. Business rules shared by several routes go to `app/services/`.

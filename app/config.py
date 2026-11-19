@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Brute-force protection (A07)
     login_rate_limit: str = "5/minute"  # per IP, on POST /login
+    password_change_rate_limit: str = "5/minute"  # per IP, on PUT /profile/password
     default_rate_limit: str = "300/minute"  # per IP, per route
     login_max_failures: int = Field(10, ge=1)  # failed logins per username...
     login_lockout_minutes: int = Field(15, ge=1)  # ...inside this window lock the account

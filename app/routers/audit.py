@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from app.dependencies import DbSession, get_current_user, require_role
+from app.dependencies import DbSession, get_current_user
 from app.models import AuditLog
 from app.schemas import AuditOut
 from app.timeutils import day_end, day_start, read_period
@@ -15,7 +15,7 @@ from app.timeutils import day_end, day_start, read_period
 router = APIRouter(
     prefix="/audit",
     tags=["Audit"],
-    dependencies=[Depends(get_current_user), Depends(require_role("director"))],
+    dependencies=[Depends(get_current_user)],
 )
 
 

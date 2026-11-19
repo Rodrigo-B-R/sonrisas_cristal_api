@@ -83,6 +83,7 @@ uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 | `ENVIRONMENT` | `production` apaga `/docs` y activa HSTS | `development` |
 | `METRICS_TOKEN` | Token de `/metrics` (sin él, `/metrics` está apagado) | vacío |
 | `LOGIN_RATE_LIMIT` / `DEFAULT_RATE_LIMIT` | Límite por IP en `POST /login` / en las demás rutas | `5/minute` / `300/minute` |
+| `PASSWORD_CHANGE_RATE_LIMIT` | Límite por IP en `PUT /profile/password` (además, tras `LOGIN_MAX_FAILURES` contraseñas actuales incorrectas se bloquea el cambio por usuario `LOGIN_LOCKOUT_MINUTES` min) | `5/minute` |
 | `LOGIN_MAX_FAILURES` / `LOGIN_LOCKOUT_MINUTES` | Fallos de login por usuario antes de bloquear la cuenta, y cuánto dura | `10` / `15` |
 | `TRUSTED_PROXIES` | Redes (CIDR) desde las que se cree la IP real del cliente | vacío |
 | `SEED_PASSWORD` | Contraseña de las cuentas del seed | `Cristal2026` |
@@ -91,7 +92,7 @@ uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 
 - **El token solo dice *quién* eres.** El rol, el daycare y si sigues activo se leen de la base **en cada petición** (`get_current_user`). Una baja, un traslado o un cambio de rol aplican en la siguiente petición, sin esperar a que el token expire. Un `role` inventado dentro del token no sirve de nada, y solo se acepta HS256.
 - **Cierre de sesión:** cada token lleva un `jti` único (los que no lo traen se rechazan). `POST /logout` guarda el `jti` del token usado en una lista de revocados hasta la hora en que habría expirado, y desde ese momento da `401 Token revoked`. Cierra **solo esa sesión**: otro celular de la misma persona sigue abierto. Volver a llamarlo con el mismo token da 401.
-- **Permisos por rol** con dependencias, el equivalente de `Depends` que se usa en FastAPI: `ManagerOnly`, `DirectorOnly`, `ManagerOrDirector`... (`app/dependencies.py`). Lo de otro daycare responde **404**, no 403, para no confirmar que existe.
+- **Permisos por rol con un motor de autorización (PyCasbin):** las reglas están en `app/authz/policy.csv` (qué rol puede llamar a qué ruta y método) y `app/authz/model.conf` (modelo RBAC). `get_current_user` consulta el motor en cada petición; lo que no está en la política se **deniega** (403), así que una ruta nueva queda cerrada hasta que se agrega. Qué *datos* ve cada quien (su daycare) se decide en las consultas (`app/access.py`): lo de otro daycare responde **404**, no 403, para no confirmar que existe.
 - **Fuerza bruta en el login:** límite por IP (5/min), bloqueo de la cuenta tras 10 fallos en 15 min (responde `429` + `Retry-After`) y respuesta idéntica para usuario inexistente, contraseña mala o cuenta inactiva, también en tiempo.
 - **Detrás del túnel de Cloudflare** todas las peticiones llegan desde el contenedor del túnel; la IP real viene en `CF-Connecting-IP`. Esa cabecera solo se cree si la petición viene de `TRUSTED_PROXIES` (pon la subred de `sonrisas_net`: `docker network inspect sonrisas_net`). Sin eso, todos los usuarios compartirían un solo contador de 5 intentos por minuto. Ojo: si publicas el puerto 8000 en la PC, quien llegue directo por ahí también viene "de confianza"; el bloqueo por cuenta sigue protegiendo.
 - **Logs en JSON**, una línea por petición (`app.request`: id, método, ruta, status, ms, usuario, IP) y los eventos de seguridad en `app.security`: `login_failed`, `login_success`, `logout`, `account_locked`, `login_locked`, `rate_limited`, `auth_*`, `access_denied` (403), `password_changed`, `password_reset`, `role_changed`, `staff_created`, `staff_terminated`, `staff_transferred`, `metrics_denied`. Nunca se escribe una contraseña ni un token. Cada respuesta trae `X-Request-ID` para encontrar su línea.
@@ -143,7 +144,8 @@ app/
   database.py        engine, sesión y set_audit_user
   models.py          tablas (SQLAlchemy), con nombres en inglés sobre las columnas reales
   schemas.py         lo que entra y sale (Pydantic, JSON en camelCase)
-  dependencies.py    get_current_user y require_role (autenticación y roles)
+  dependencies.py    get_current_user (autenticación y consulta al motor de autorización)
+  authz/             motor Casbin: model.conf y policy.csv (permisos por rol)
   access.py          qué daycare puede ver cada quien
   security.py        bcrypt, JWT, IP real, rate limit y bloqueo de cuentas
   errors.py          un solo formato de error: {"error": "..."}

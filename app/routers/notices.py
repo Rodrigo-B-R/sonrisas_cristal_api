@@ -9,7 +9,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import joinedload
 
 from app.constants import NOTICE_TYPE_TO_DB, ROLE_TO_DB
-from app.dependencies import CurrentUser, DbSession, ManagerOrDirector, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.errors import ApiError
 from app.models import Daycare, Notice, NoticeRecipient, Role, Schedule, ScheduleDay, User
 from app.schemas import (
@@ -118,7 +118,7 @@ def _manager_item(notice: Notice, counts: tuple[int, int], mine: NoticeRecipient
 
 @router.get("", response_model=list[ManagerNoticeOut])
 def list_notices(
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
 ):
@@ -137,7 +137,7 @@ def list_notices(
 
 
 @router.get("/{notice_id}", response_model=NoticeDetailOut)
-def get_notice(notice_id: int, user: ManagerOrDirector, db: DbSession):
+def get_notice(notice_id: int, user: CurrentUser, db: DbSession):
     """The notice with who confirmed and who is pending (the "reading status" screen)."""
     notice = db.scalars(
         select(Notice).where(Notice.id == notice_id).options(joinedload(Notice.author))
@@ -172,7 +172,7 @@ def _works_today_with(**column) -> object:
 
 
 @router.post("", response_model=ManagerNoticeOut, status_code=201)
-def create_notice(body: NoticeIn, user: ManagerOrDirector, db: DbSession):
+def create_notice(body: NoticeIn, user: CurrentUser, db: DbSession):
     """A manager writes to their own daycare. A director writes to one (daycareId) or to all (no daycareId)."""
     if user.role_code == "director":
         daycare_id = body.daycare_id

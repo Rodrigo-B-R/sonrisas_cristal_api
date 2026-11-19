@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.access import can_access_daycare, daycare_scope, require_found
 from app.constants import ATTENDANCE_FROM_DB, ATTENDANCE_TO_DB
 from app.database import set_audit_user
-from app.dependencies import CurrentUser, DbSession, ManagerOnly, ManagerOrDirector, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.errors import ApiError
 from app.models import AbsenceReason, Attendance, User
 from app.schemas import (
@@ -54,7 +54,7 @@ def _period(start_date: date | None, end_date: date | None) -> tuple[date, date]
 
 @router.get("", response_model=list[PersonAttendanceOut])
 def list_attendance(
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate", description="Default: Monday of this week"),
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),
@@ -90,7 +90,7 @@ def my_attendance(
 @router.get("/{user_id}", response_model=SinglePersonAttendanceOut)
 def person_attendance_report(
     user_id: int,
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate"),
     end_date: date | None = Query(None, alias="endDate"),
@@ -102,7 +102,7 @@ def person_attendance_report(
 
 
 @router.post("", response_model=AttendanceOut, status_code=201)
-def set_attendance(body: AttendanceIn, response: Response, user: ManagerOnly, db: DbSession):
+def set_attendance(body: AttendanceIn, response: Response, user: CurrentUser, db: DbSession):
     """The manager marks an absence or incident, or fixes the status of a day. 201 if new, 200 if it corrected one."""
     reason_id = _resolve_reason(db, body.status, body.absence_reason_id, body.absence_reason)
     person = db.get(User, body.user_id)
@@ -138,7 +138,7 @@ def set_attendance(body: AttendanceIn, response: Response, user: ManagerOnly, db
 
 
 @router.put("/{attendance_id}", response_model=AttendanceOut)
-def fix_attendance(attendance_id: int, body: AttendanceUpdateIn, user: ManagerOnly, db: DbSession):
+def fix_attendance(attendance_id: int, body: AttendanceUpdateIn, user: CurrentUser, db: DbSession):
     attendance = require_found(db.get(Attendance, attendance_id))
     if not can_access_daycare(user, attendance.daycare_id):
         raise ApiError(404, "Not found")

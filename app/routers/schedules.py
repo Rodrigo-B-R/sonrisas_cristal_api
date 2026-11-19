@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.access import daycare_scope, require_found
 from app.constants import NO_END, ROLE_TO_DB, WEEKDAY_TO_DB
-from app.dependencies import CurrentUser, DbSession, ManagerOnly, ManagerOrDirector, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.errors import ApiError
 from app.models import Role, Room, Schedule, ScheduleDay, Shift, User
 from app.schemas import PersonScheduleOut, ScheduleIn, ScheduleOut
@@ -50,7 +50,7 @@ def my_schedule(
 
 @router.get("", response_model=list[PersonScheduleOut])
 def list_schedules(
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     day: date | None = Query(None, alias="date", description="Default: today"),
     daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
@@ -64,7 +64,7 @@ def list_schedules(
 @router.get("/{user_id}", response_model=PersonScheduleOut)
 def get_schedule(
     user_id: int,
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     day: date | None = Query(None, alias="date", description="Default: today"),
 ):
@@ -77,7 +77,7 @@ def get_schedule(
 
 
 @router.put("/{user_id}", response_model=ScheduleOut, status_code=201)
-def replace_schedule(user_id: int, body: ScheduleIn, user: ManagerOnly, db: DbSession):
+def replace_schedule(user_id: int, body: ScheduleIn, user: CurrentUser, db: DbSession):
     """Creates a new schedule for the person, valid from validFrom (default today).
 
     "days" lists the days they work. A weekday that is not listed is a day off.

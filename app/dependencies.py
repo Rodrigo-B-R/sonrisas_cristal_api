@@ -1,11 +1,12 @@
 """FastAPI dependencies: who is calling, and may they do this?
 
-This is the equivalent of the middlewares of the Node version:
-  get_current_user    verificarToken  (and it also looks the user up in the database)
-  require_role(...)   permitir(...)
-Use the ready-made aliases at the bottom in a route:
+get_current_user answers both questions: it checks the token, loads the user from the database
+and then asks the Casbin engine (app/authz/policy.csv) whether the role may call this route.
+Use the aliases at the bottom in a route:
 
-    def create_room(user: ManagerOnly, db: DbSession): ...
+    def create_room(user: CurrentUser, db: DbSession): ...
+
+Which roles may call the route is NOT written in the route: it is in app/authz/policy.csv.
 """
 
 from typing import Annotated
@@ -16,6 +17,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.authz import is_allowed
 from app.database import get_db
 from app.errors import ApiError
 from app.logging_config import security_event
@@ -61,32 +63,25 @@ def get_current_user(
         raise ApiError(401, "Invalid token", headers=UNAUTHORIZED)  # same message: do not reveal why
     request.state.user_id = user.id
     request.state.token = token  # POST /logout needs to know which token is being used
+    authorize(request, user)
     return user
 
 
-def require_role(*roles: str):
-    """Only these roles (employee, manager, director) may call the route."""
-
-    def check(request: Request, user: Annotated[User, Depends(get_current_user)]) -> User:
-        if user.role_code not in roles:
-            security_event(
-                "access_denied",
-                user_id=user.id,
-                role=user.role_code,
-                allowed=list(roles),
-                method=request.method,
-                path=request.url.path,
-                ip=get_client_ip(request),
-            )
-            raise ApiError(403, "Your role cannot do this")
-        return user
-
-    return check
+def authorize(request: Request, user: User) -> None:
+    """403 unless the policy lets this role call this route. A route missing from the policy is denied."""
+    route = request.scope.get("route")
+    template = getattr(route, "path_format", None) or getattr(route, "path", "")
+    if not is_allowed(user.role_code, template, request.method):
+        security_event(
+            "access_denied",
+            user_id=user.id,
+            role=user.role_code,
+            method=request.method,
+            path=request.url.path,
+            ip=get_client_ip(request),
+        )
+        raise ApiError(403, "Your role cannot do this")
 
 
 DbSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
-EmployeeOrManager = Annotated[User, Depends(require_role("employee", "manager"))]
-ManagerOnly = Annotated[User, Depends(require_role("manager"))]
-ManagerOrDirector = Annotated[User, Depends(require_role("manager", "director"))]
-DirectorOnly = Annotated[User, Depends(require_role("director"))]

@@ -115,7 +115,7 @@ def test_auth_failures_and_forbidden_access_are_logged(client, login, security_e
     names = [e["event"] for e in security_events]
     assert "auth_missing_token" in names and "auth_invalid_token" in names
     denied = event(security_events, "access_denied")[0]
-    assert denied["role"] == "employee" and denied["path"] == "/staff" and denied["allowed"] == ["manager", "director"]
+    assert denied["role"] == "employee" and denied["path"] == "/staff"
     assert "ip" in denied and "user_id" in denied
 
 

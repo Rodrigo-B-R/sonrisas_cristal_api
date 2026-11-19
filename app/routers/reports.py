@@ -7,7 +7,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, Response
 
 from app.access import daycare_scope
-from app.dependencies import DbSession, DirectorOnly, ManagerOrDirector, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.errors import ApiError
 from app.models import User
 from app.schemas import CoverageOut, StatisticsOut, SummaryOut
@@ -26,7 +26,7 @@ router = APIRouter(tags=["Reports"], dependencies=[Depends(get_current_user)])
 
 @router.get("/coverage", response_model=CoverageOut)
 def coverage(
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     day: date | None = Query(None, alias="date", description="Default: today"),
     daycare_id: int | None = Query(None, alias="daycareId", description="Required for directors"),
@@ -45,7 +45,7 @@ def coverage(
 
 @router.get("/summary", response_model=SummaryOut)
 def summary(
-    user: DirectorOnly,
+    user: CurrentUser,
     db: DbSession,
     day: date | None = Query(None, alias="date", description="Default: today"),
 ):
@@ -75,7 +75,7 @@ def summary(
 
 @router.get("/statistics", response_model=StatisticsOut)
 def statistics(
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate", description="Default: the first day of this month"),
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),
@@ -93,7 +93,7 @@ def _safe_cell(value) -> str:
 
 @router.get("/export/attendance", response_class=Response, responses={200: {"content": {"text/csv": {}}}})
 def export_attendance(
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate", description="Default: the first day of this month"),
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),

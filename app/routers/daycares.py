@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.access import require_found
-from app.dependencies import DbSession, DirectorOnly, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.models import Daycare, Location
 from app.schemas import DaycareIn, DaycareOut, DaycareUpdateIn
 
@@ -30,7 +30,7 @@ def get_daycare(daycare_id: int, db: DbSession):
 
 
 @router.post("", response_model=DaycareOut, status_code=201)
-def create_daycare(body: DaycareIn, user: DirectorOnly, db: DbSession):
+def create_daycare(body: DaycareIn, user: CurrentUser, db: DbSession):
     location = Location(
         name=f"Daycare {body.name}",
         latitude=body.latitude,
@@ -44,7 +44,7 @@ def create_daycare(body: DaycareIn, user: DirectorOnly, db: DbSession):
 
 
 @router.put("/{daycare_id}", response_model=DaycareOut)
-def update_daycare(daycare_id: int, body: DaycareUpdateIn, user: DirectorOnly, db: DbSession):
+def update_daycare(daycare_id: int, body: DaycareUpdateIn, user: CurrentUser, db: DbSession):
     daycare = require_found(
         db.scalars(select(Daycare).options(*_load).where(Daycare.id == daycare_id)).first(), "Daycare not found"
     )

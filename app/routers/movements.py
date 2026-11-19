@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload
 
 from app.access import daycare_scope
 from app.constants import MOVEMENT_TO_DB
-from app.dependencies import DbSession, ManagerOrDirector, require_role
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.models import Movement
 from app.schemas import MovementDetailOut
 from app.timeutils import first_of_month, read_period, today
@@ -17,13 +17,13 @@ from app.timeutils import first_of_month, read_period, today
 router = APIRouter(
     prefix="/movements",
     tags=["Movements"],
-    dependencies=[Depends(require_role("manager", "director"))],
+    dependencies=[Depends(get_current_user)],
 )
 
 
 @router.get("", response_model=list[MovementDetailOut])
 def list_movements(
-    user: ManagerOrDirector,
+    user: CurrentUser,
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate", description="Default: the first day of this month"),
     end_date: date | None = Query(None, alias="endDate"),

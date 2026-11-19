@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.access import can_access_daycare, daycare_scope, require_found
 from app.constants import MAX_CLIENT_TIMESTAMP_AGE_HOURS
 from app.database import set_audit_user
-from app.dependencies import CurrentUser, DbSession, EmployeeOrManager, ManagerOnly, get_current_user
+from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.errors import ApiError
 from app.models import Daycare, TimeRecord, User
 from app.schemas import BatchIn, BatchOut, ClockInIn, ClockInOut, ClockOutIn, ClockStatusOut, RecordFixIn, TimeRecordOut
@@ -70,7 +70,7 @@ def list_records(
 
 
 @router.post("/clock-in", response_model=ClockInOut, status_code=201)
-def clock_in(body: ClockInIn, response: Response, user: EmployeeOrManager, db: DbSession):
+def clock_in(body: ClockInIn, response: Response, user: CurrentUser, db: DbSession):
     """The person clocks in for themselves. Outside the zone it is saved anyway, for the manager to review.
 
     Sending the same uuid again (the phone lost the connection) returns the record already saved, with 200.
@@ -97,12 +97,12 @@ def clock_in(body: ClockInIn, response: Response, user: EmployeeOrManager, db: D
 
 
 @router.post("/clock-out", response_model=TimeRecordOut)
-def clock_out(body: ClockOutIn, user: EmployeeOrManager, db: DbSession):
+def clock_out(body: ClockOutIn, user: CurrentUser, db: DbSession):
     return record_service.clock_out(db, user, read_timestamp(body.occurred_at, MAX_CLIENT_TIMESTAMP_AGE_HOURS))
 
 
 @router.post("/batch", response_model=BatchOut, status_code=201)
-def clock_in_batch(body: BatchIn, user: ManagerOnly, db: DbSession):
+def clock_in_batch(body: BatchIn, user: CurrentUser, db: DbSession):
     """The manager clocks in several people at once. The ones that cannot be recorded come back in "skipped"."""
     _require_room_and_shift_together(body.room_id, body.shift_id)
     when = read_timestamp(body.occurred_at)
@@ -143,7 +143,7 @@ def clock_in_batch(body: BatchIn, user: ManagerOnly, db: DbSession):
 
 
 @router.put("/{record_id}", response_model=TimeRecordOut)
-def fix_record(record_id: int, body: RecordFixIn, user: ManagerOnly, db: DbSession):
+def fix_record(record_id: int, body: RecordFixIn, user: CurrentUser, db: DbSession):
     """The manager corrects a record directly. The before/after is kept by the audit triggers."""
     record = db.scalars(select(TimeRecord).where(TimeRecord.id == record_id).options(*record_options())).first()
     record = require_found(record)

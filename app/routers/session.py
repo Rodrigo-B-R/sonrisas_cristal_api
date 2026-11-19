@@ -18,6 +18,7 @@ from app.security import (
     hash_password,
     limiter,
     login_guard,
+    password_guard,
     password_problems,
     token_denylist,
     verify_password,
@@ -88,10 +89,24 @@ def get_profile(user: CurrentUser):
 
 
 @router.put("/profile/password", response_model=MessageOut)
+@limiter.limit(settings.password_change_rate_limit)
 def change_password(request: Request, body: PasswordChangeIn, user: CurrentUser, db: DbSession):
+    """Limited per IP, and locked per user after too many wrong current passwords."""
+    ip = get_client_ip(request)
+    key = str(user.id)
+
+    seconds_left = password_guard.seconds_locked(key)
+    if seconds_left:
+        security_event("password_change_locked", user_id=user.id, ip=ip, seconds_left=seconds_left)
+        raise ApiError(429, "Too many failed attempts. Try again later.", headers={"Retry-After": str(seconds_left)})
+
     if not verify_password(body.current_password, user.password_hash):
-        security_event("password_change_failed", user_id=user.id, ip=get_client_ip(request))
+        locked_now = password_guard.register_failure(key)
+        security_event("password_change_failed", user_id=user.id, ip=ip)
+        if locked_now:
+            security_event("password_change_blocked", user_id=user.id, ip=ip, minutes=settings.login_lockout_minutes)
         raise ApiError(401, "The current password is not correct")
+    password_guard.register_success(key)
     problems = password_problems(body.new_password, body.current_password)
     if problems:
         raise ApiError(400, "The password does not meet the requirements", missing=problems)

@@ -260,3 +260,11 @@ login_guard = LoginGuard(
     window_seconds=settings.login_lockout_minutes * 60,
     lockout_seconds=settings.login_lockout_minutes * 60,
 )
+
+# Same idea for PUT /profile/password: a stolen token must not allow guessing the current password.
+# Keyed by user id (as text), with the same limits as the login.
+password_guard = LoginGuard(
+    max_failures=settings.login_max_failures,
+    window_seconds=settings.login_lockout_minutes * 60,
+    lockout_seconds=settings.login_lockout_minutes * 60,
+)
