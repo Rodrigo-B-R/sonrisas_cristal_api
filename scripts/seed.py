@@ -76,7 +76,6 @@ def get_or_create(db, model, where: dict, **extra):
 
 
 def main() -> None:
-    password_hash = hash_password(settings.seed_password)
     with SessionLocal() as db:
         roles = {name: get_or_create(db, Role, {"name": db_name}) for name, db_name in ROLE_TO_DB.items()}
         positions = {name: get_or_create(db, Position, {"name": name}) for name in POSITIONS}
@@ -117,12 +116,13 @@ def main() -> None:
             )
             user = db.scalars(select(User).where(User.username == username)).first()
             if user is None:
-                user = User(username=username, password_hash=password_hash, is_active=True, **data)
+                # one hash per person: each call to hash_password makes its own random salt
+                user = User(username=username, password_hash=hash_password(settings.seed_password), is_active=True, **data)
                 db.add(user)
             else:  # the same as the Node seed: it also resets the password and reactivates the account
                 for key, value in data.items():
                     setattr(user, key, value)
-                user.password_hash, user.is_active = password_hash, True
+                user.password_hash, user.is_active = hash_password(settings.seed_password), True
             db.flush()
             has_hire = db.scalars(select(Movement).where(Movement.user_id == user.id, Movement.type == "alta")).first()
             if not has_hire:
