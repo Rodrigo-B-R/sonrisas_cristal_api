@@ -18,6 +18,7 @@ os.environ["LOGIN_MAX_FAILURES"] = "10"
 os.environ["TRUSTED_PROXIES"] = "10.0.0.0/8"
 os.environ["LATE_TOLERANCE_MINUTES"] = "5"
 
+import json  # noqa: E402
 import logging  # noqa: E402
 
 import pytest  # noqa: E402
@@ -31,6 +32,11 @@ from app.security import limiter, login_guard, password_guard, token_denylist  #
 from tests import factories  # noqa: E402
 
 PASSWORD = "Secret123"
+
+
+def as_logged(fields: dict) -> dict:
+    """The fields the way they reach the log file (JsonFormatter uses default=str: UUIDs become text)."""
+    return json.loads(json.dumps(fields, default=str))
 
 
 @pytest.fixture(autouse=True)
@@ -80,7 +86,7 @@ def security_events():
 
     class Collector(logging.Handler):
         def emit(self, record):
-            records.append(getattr(record, "fields", {}))
+            records.append(as_logged(getattr(record, "fields", {})))
 
     handler = Collector()
     security_log.addHandler(handler)

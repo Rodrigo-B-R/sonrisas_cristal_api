@@ -61,7 +61,7 @@ Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "satur
 MovementType = Literal["hire", "termination", "transfer"]
 
 Name = Annotated[str, Field(min_length=1, max_length=255)]
-Id = Annotated[int, Field(ge=1)]
+Id = UUID  # every id is a UUID; anything else in a request is a 400
 
 
 # ── Base classes ─────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ def _translate(mapping: dict):
 
 
 class NameRef(Out):
-    id: int
+    id: UUID
     name: str
 
 
@@ -101,36 +101,36 @@ class TemporaryPasswordOut(Out):
 
 
 class RoleOut(Out):
-    id: int
+    id: UUID
     name: str
 
     _name = field_validator("name", mode="before")(_translate(ROLE_FROM_DB))
 
 
 class PositionOut(Out):
-    id: int
+    id: UUID
     name: str
 
 
 class TerminationReasonOut(Out):
-    id: int
+    id: UUID
     name: str
 
 
 class AbsenceReasonOut(Out):
-    id: int
+    id: UUID
     description: str
 
 
 class ShiftOut(Out):
-    id: int
+    id: UUID
     name: str
     start_time: ShortTime
     end_time: ShortTime
 
 
 class LocationOut(Out):
-    id: int
+    id: UUID
     name: str
     latitude: float
     longitude: float
@@ -138,16 +138,16 @@ class LocationOut(Out):
 
 
 class RoomOut(Out):
-    id: int
+    id: UUID
     name: str
     min_staff: int
-    daycare_id: int
+    daycare_id: UUID
 
 
 class DaycareBasicOut(Out):
-    id: int
+    id: UUID
     name: str
-    location_id: int
+    location_id: UUID
 
 
 class DaycareOut(DaycareBasicOut):
@@ -156,15 +156,15 @@ class DaycareOut(DaycareBasicOut):
 
 
 class UserOut(Out):
-    id: int
+    id: UUID
     name: str
     username: str
     email: str
     phone: str
     is_active: bool
-    role_id: int
-    position_id: int
-    daycare_id: int
+    role_id: UUID
+    position_id: UUID
+    daycare_id: UUID
     role: RoleOut
     position: PositionOut
     daycare: DaycareBasicOut
@@ -183,9 +183,9 @@ class LoginIn(In):
 
 
 class LoginUser(Out):
-    id: int
+    id: UUID
     name: str
-    daycare_id: int
+    daycare_id: UUID
 
 
 class LoginOut(Out):
@@ -261,11 +261,11 @@ class RoomUpdateIn(In):
 
 
 class ScheduleDayOut(Out):
-    id: int
+    id: UUID
     weekday: str
-    schedule_id: int
-    shift_id: int
-    room_id: int
+    schedule_id: UUID
+    shift_id: UUID
+    room_id: UUID
     shift: ShiftOut
     room: RoomOut
 
@@ -273,15 +273,15 @@ class ScheduleDayOut(Out):
 
 
 class ScheduleOut(Out):
-    id: int
-    user_id: int
+    id: UUID
+    user_id: UUID
     valid_from: Date
     valid_until: Date
     days: list[ScheduleDayOut]
 
 
 class PersonBrief(Out):
-    id: int
+    id: UUID
     name: str
     position: PositionOut
 
@@ -306,15 +306,16 @@ class ScheduleIn(In):
 
 
 class MovementOut(Out):
-    id: int
+    id: UUID
     type: str
     date: Date
     notes: str | None
-    user_id: int
-    done_by_id: int
-    termination_reason_id: int | None
-    origin_daycare_id: int | None
-    destination_daycare_id: int | None
+    created_at: UtcTimestamp
+    user_id: UUID
+    done_by_id: UUID
+    termination_reason_id: UUID | None
+    origin_daycare_id: UUID | None
+    destination_daycare_id: UUID | None
     termination_reason: TerminationReasonOut | None
 
     _type = field_validator("type", mode="before")(_translate(MOVEMENT_FROM_DB))
@@ -374,17 +375,17 @@ class TransferIn(In):
 
 
 class TimeRecordOut(Out):
-    id: int
+    id: UUID
     uuid: UUID
     clock_in_at: UtcTimestamp
     clock_out_at: UtcTimestamp | None
     source: str
     within_zone: bool
-    user_id: int
-    recorded_by_id: int
-    location_id: int
-    room_id: int
-    shift_id: int
+    user_id: UUID
+    recorded_by_id: UUID
+    location_id: UUID
+    room_id: UUID
+    shift_id: UUID
     room: RoomOut
     shift: ShiftOut
     user: NameRef
@@ -393,13 +394,13 @@ class TimeRecordOut(Out):
 
 
 class AttendanceOut(Out):
-    id: int
+    id: UUID
     date: Date
     status: str
-    absence_reason_id: int | None
-    user_id: int
-    recorded_by_id: int
-    daycare_id: int
+    absence_reason_id: UUID | None
+    user_id: UUID
+    recorded_by_id: UUID
+    daycare_id: UUID
     absence_reason: AbsenceReasonOut | None
 
     _status = field_validator("status", mode="before")(_translate(ATTENDANCE_FROM_DB))
@@ -419,7 +420,7 @@ class ClockStatusOut(Out):
 
 
 class SkippedOut(Out):
-    user_id: int
+    user_id: UUID
     reason: str
 
 
@@ -474,7 +475,7 @@ class AttendanceUpdateIn(In):
 
 
 class DayShiftOut(Out):
-    shift_id: int
+    shift_id: UUID
     shift: str
     start_time: str
     end_time: str
@@ -489,8 +490,8 @@ class AttendanceDayOut(Out):
     within_zone: bool
     status: str
     reason: str | None
-    reason_id: int | None
-    attendance_id: int | None
+    reason_id: UUID | None
+    attendance_id: UUID | None
     late_minutes: int
 
 
@@ -516,19 +517,20 @@ class SinglePersonAttendanceOut(PersonAttendanceOut):
 
 
 class NoticeAuthorOut(Out):
-    id: int
+    id: UUID
     name: str
-    daycare_id: int
+    daycare_id: UUID
 
 
 class NoticeBaseOut(Out):
-    id: int
+    id: UUID
     subject: str
     notice_type: str
     message: str
     requires_confirmation: bool
-    author_id: int
-    daycare_id: int | None  # null = a general notice, for every daycare
+    created_at: UtcTimestamp
+    author_id: UUID
+    daycare_id: UUID | None  # null = a general notice, for every daycare
     author: NoticeAuthorOut
 
     _notice_type = field_validator("notice_type", mode="before")(_translate(NOTICE_TYPE_FROM_DB))
@@ -557,7 +559,7 @@ class NoticeDetailOut(NoticeBaseOut):
 
 
 class ReadReceiptOut(Out):
-    notice_id: int
+    notice_id: UUID
     read: bool
     read_at: UtcTimestamp | None
 
@@ -579,11 +581,11 @@ class NoticeIn(In):
 
 
 class AuditOut(Out):
-    id: int
-    user_id: int | None
+    id: UUID
+    user_id: UUID | None
     action: str
     table: str
-    record_id: int
+    record_id: UUID
     previous_data: dict | None
     new_data: dict | None
     created_at: UtcTimestamp
@@ -594,7 +596,7 @@ class AuditOut(Out):
 
 
 class CoverageShiftOut(Out):
-    shift_id: int
+    shift_id: UUID
     shift: str
     scheduled: int
     present: int
@@ -622,7 +624,7 @@ class CoverageOut(Out):
 
 
 class SummaryDaycareOut(Out):
-    id: int
+    id: UUID
     name: str
     complete: bool
     alerts: list[str]

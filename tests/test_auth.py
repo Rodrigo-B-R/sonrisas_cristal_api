@@ -46,7 +46,7 @@ def test_wrong_password_and_unknown_user_look_the_same(client):
 
 def test_inactive_user_cannot_log_in(client, world):
     with SessionLocal() as db:
-        db.get(User, world["ids"]["employee_a"]).is_active = False
+        db.get(User, uuid.UUID(world["ids"]["employee_a"])).is_active = False
         db.commit()
     response = client.post("/login", json={"username": "employee_a", "password": PASSWORD})
     assert response.status_code == 401
@@ -98,6 +98,14 @@ def test_token_without_an_id_is_rejected(client, world):
     """Every token carries a unique id (jti): without it, it could not be closed with /logout."""
     token = jwt.encode({"sub": str(world["ids"]["manager_a"]), "exp": 9999999999}, settings.jwt_secret, algorithm="HS256")
     assert client.get("/profile", headers=bearer(token)).status_code == 401
+
+
+def test_old_numeric_subject_is_rejected(client):
+    """Tokens from before the UUID ids said "sub": "3". They are invalid (401), never a 500."""
+    for subject in ("3", "not-a-uuid", ""):
+        response = client.get("/profile", headers=bearer(token_for(subject)))
+        assert response.status_code == 401, subject
+        assert response.json() == {"error": "Invalid token"}
 
 
 # ── Logout ───────────────────────────────────────────────────────────
@@ -160,7 +168,7 @@ def test_role_change_applies_immediately(client, login, world):
     assert client.get("/staff", headers=headers).status_code == 200
     with SessionLocal() as db:
         employee_role = db.query(Role).filter(Role.name == "empleada").one()
-        db.get(User, world["ids"]["manager_a"]).role_id = employee_role.id
+        db.get(User, uuid.UUID(world["ids"]["manager_a"])).role_id = employee_role.id
         db.commit()
     assert client.get("/staff", headers=headers).status_code == 403  # same token, new role
 
@@ -170,7 +178,7 @@ def test_termination_applies_immediately(client, login, world):
     assert client.get("/profile", headers=employee).status_code == 200
     manager = login("manager_a")
     response = client.post(
-        f"/staff/{world['ids']['employee_a']}/terminate", headers=manager, json={"terminationReasonId": 1}
+        f"/staff/{world['ids']['employee_a']}/terminate", headers=manager, json={"terminationReasonId": world["termination_reason"]}
     )
     assert response.status_code == 200
     assert client.get("/profile", headers=employee).status_code == 401  # the token is still valid, the person is not

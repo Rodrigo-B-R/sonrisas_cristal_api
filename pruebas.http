@@ -1,11 +1,13 @@
 ### Requests for the VS Code "REST Client" extension. Click "Send Request" above each one.
-### The tokens are captured by the three logins below: no copy and paste.
+### Nothing to copy and paste: the tokens AND the ids are captured from earlier responses.
 ###
 ### Seed accounts (password = SEED_PASSWORD, "Cristal2026" by default):
 ###   ana.torres (employee) · marisol.garcia (manager of Cumbres) · direccion (director)
-### The ids are the ones `python -m scripts.seed` leaves in a new database:
-###   daycare 1 = Cumbres · rooms 1 Lactantes, 2 Maternal A, 3 Maternal B, 4 Preescolar
-###   shifts 1 matutino, 2 vespertino · users 3 ana.torres ... 9 maria.lopez · position 5 Auxiliar · termination reason 1 Renuncia
+###
+### Ids are random UUIDs (they change every time the database is created), so they are never
+### written here. Run, in this order, once per session:
+###   1. the three logins          2. the requests in "Look up the ids"
+### Requests further down that use an id captured by another one say so ("needs: ...").
 ###
 ### The interactive documentation (with a "Try it out" button) is at {{base}}/docs when ENVIRONMENT=development.
 ### To use Postman: Import -> Link -> {{base}}/openapi.json
@@ -45,6 +47,43 @@ Content-Type: application/json
 @manager = {{loginManager.response.body.token}}
 @director = {{loginDirector.response.body.token}}
 
+### ═══════════════ Look up the ids (run these after the logins) ═══════════════
+
+### Catalogs for the menus: roles, positions, shifts, termination reasons, absence reasons
+# @name catalogs
+GET {{base}}/catalogs
+Authorization: Bearer {{employee}}
+
+### My daycare (Cumbres) with its rooms
+# @name managerProfile
+GET {{base}}/profile
+Authorization: Bearer {{manager}}
+
+### Staff of my daycare: the people below are looked up here by username
+# @name staff
+GET {{base}}/staff
+Authorization: Bearer {{manager}}
+
+### Every daycare: the director's examples use one that is not Cumbres
+# @name daycares
+GET {{base}}/daycares
+Authorization: Bearer {{director}}
+
+###
+@cumbres = {{managerProfile.response.body.daycare.id}}
+@apodaca = {{daycares.response.body.$[?(@.name=='Apodaca')].id}}
+@lactantes = {{managerProfile.response.body.$.daycare.rooms[?(@.name=='Lactantes')].id}}
+@maternalA = {{managerProfile.response.body.$.daycare.rooms[?(@.name=='Maternal A')].id}}
+@morning = {{catalogs.response.body.$.shifts[?(@.name=='matutino')].id}}
+@evening = {{catalogs.response.body.$.shifts[?(@.name=='vespertino')].id}}
+@auxiliar = {{catalogs.response.body.$.positions[?(@.name=='Auxiliar')].id}}
+@responsable = {{catalogs.response.body.$.positions[?(@.name=='Responsable de estancia')].id}}
+@resignation = {{catalogs.response.body.$.terminationReasons[?(@.name=='Renuncia')].id}}
+@ana = {{staff.response.body.$[?(@.username=='ana.torres')].id}}
+@lucia = {{staff.response.body.$[?(@.username=='lucia.herrera')].id}}
+@carmen = {{staff.response.body.$[?(@.username=='carmen.ruiz')].id}}
+@sofia = {{staff.response.body.$[?(@.username=='sofia.diaz')].id}}
+
 ### My profile
 GET {{base}}/profile
 Authorization: Bearer {{employee}}
@@ -56,10 +95,6 @@ Content-Type: application/json
 
 { "currentPassword": "{{password}}", "newPassword": "Cristal2027" }
 
-### Catalogs for the menus: roles, positions, shifts, termination reasons, absence reasons
-GET {{base}}/catalogs
-Authorization: Bearer {{employee}}
-
 ### ═══════════════ Employee ═══════════════
 
 ### "Clock in" screen: am I inside? what is my shift today? where is the daycare?
@@ -68,6 +103,7 @@ Authorization: Bearer {{employee}}
 
 ### Clock in (room and shift come from my schedule). 201, or 200 if the uuid was already saved.
 ### occurredAt is optional: an offline clock-in that arrives later. Without UTC offset it is read in the daycares' time zone.
+# @name clockIn
 POST {{base}}/time-records/clock-in
 Authorization: Bearer {{employee}}
 Content-Type: application/json
@@ -99,11 +135,12 @@ GET {{base}}/schedules/me
 Authorization: Bearer {{employee}}
 
 ### Notices that reached me
+# @name inbox
 GET {{base}}/notices/inbox
 Authorization: Bearer {{employee}}
 
-### Confirm I read notice 1
-POST {{base}}/notices/1/read
+### Confirm I read the newest notice (needs: inbox)
+POST {{base}}/notices/{{inbox.response.body.$[0].id}}/read
 Authorization: Bearer {{employee}}
 
 ### ═══════════════ Manager ═══════════════
@@ -113,10 +150,11 @@ GET {{base}}/staff
 Authorization: Bearer {{manager}}
 
 ### One person: profile, today's schedule and history of movements
-GET {{base}}/staff/3
+GET {{base}}/staff/{{ana}}
 Authorization: Bearer {{manager}}
 
 ### Hire an employee -> 201 with temporaryPassword (shown only once)
+# @name hired
 POST {{base}}/staff
 Authorization: Bearer {{manager}}
 Content-Type: application/json
@@ -126,26 +164,29 @@ Content-Type: application/json
   "username": "nueva.persona",
   "email": "nueva.persona@sonrisascristal.mx",
   "phone": "81 1000 0100",
-  "positionId": 5
+  "positionId": "{{auxiliar}}"
 }
 
-### Update a person
-PUT {{base}}/staff/10
+###
+@newPerson = {{hired.response.body.id}}
+
+### Update the person just hired (needs: hired)
+PUT {{base}}/staff/{{newPerson}}
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
 { "phone": "81 1000 0101" }
 
-### Reset a password -> { "temporaryPassword": "..." }
-POST {{base}}/staff/10/password
+### Reset a password -> { "temporaryPassword": "..." } (needs: hired)
+POST {{base}}/staff/{{newPerson}}/password
 Authorization: Bearer {{manager}}
 
-### Terminate (the person is not deleted: it stays in the history)
-POST {{base}}/staff/10/terminate
+### Terminate (the person is not deleted: it stays in the history) (needs: hired)
+POST {{base}}/staff/{{newPerson}}/terminate
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
-{ "terminationReasonId": 1, "notes": "Moved to another city" }
+{ "terminationReasonId": "{{resignation}}", "notes": "Moved to another city" }
 
 ### Movements (hires, terminations, transfers). Filters: type, startDate, endDate
 GET {{base}}/movements?type=hire
@@ -163,7 +204,7 @@ Content-Type: application/json
 { "name": "Sala de arte", "minStaff": 2 }
 
 ### Change the minimum of a room
-PUT {{base}}/rooms/1
+PUT {{base}}/rooms/{{lactantes}}
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
@@ -173,17 +214,17 @@ Content-Type: application/json
 GET {{base}}/schedules?date={{day}}
 Authorization: Bearer {{manager}}
 
-### Replace the schedule of person 3 from a date (days not listed are days off)
-PUT {{base}}/schedules/3
+### Replace Ana's schedule from a date (days not listed are days off)
+PUT {{base}}/schedules/{{ana}}
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
 {
   "validFrom": "2026-11-16",
   "days": [
-    { "day": "monday", "shiftId": 1, "roomId": 2 },
-    { "day": "tuesday", "shiftId": 1, "roomId": 2 },
-    { "day": "wednesday", "shiftId": 2, "roomId": 2 }
+    { "day": "monday", "shiftId": "{{morning}}", "roomId": "{{maternalA}}" },
+    { "day": "tuesday", "shiftId": "{{morning}}", "roomId": "{{maternalA}}" },
+    { "day": "wednesday", "shiftId": "{{evening}}", "roomId": "{{maternalA}}" }
   ]
 }
 
@@ -192,14 +233,14 @@ POST {{base}}/time-records/batch
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
-{ "userIds": [3, 4, 5], "occurredAt": "{{day}}T07:00:00" }
+{ "userIds": ["{{lucia}}", "{{carmen}}", "{{sofia}}"], "occurredAt": "{{day}}T07:00:00" }
 
 ### Records of the daycare, only the ones outside the zone
 GET {{base}}/time-records?startDate={{day}}&endDate={{day}}&withinZone=false
 Authorization: Bearer {{manager}}
 
-### Fix a record directly. "clockOutAt": null removes the clock-out.
-PUT {{base}}/time-records/1
+### Fix Ana's clock-in directly. "clockOutAt": null removes the clock-out. (needs: clockIn)
+PUT {{base}}/time-records/{{clockIn.response.body.record.id}}
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
@@ -210,18 +251,19 @@ GET {{base}}/attendance?startDate=2026-11-02&endDate=2026-11-08
 Authorization: Bearer {{manager}}
 
 ### Attendance of one person
-GET {{base}}/attendance/3?startDate=2026-11-02&endDate=2026-11-08
+GET {{base}}/attendance/{{ana}}?startDate=2026-11-02&endDate=2026-11-08
 Authorization: Bearer {{manager}}
 
 ### Mark an absence (absent and incident need a reason: absenceReasonId or absenceReason). 201, or 200 if it corrected one.
+# @name absence
 POST {{base}}/attendance
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
-{ "userId": 4, "date": "{{day}}", "status": "absent", "absenceReason": "enfermedad" }
+{ "userId": "{{lucia}}", "date": "{{day}}", "status": "absent", "absenceReason": "enfermedad" }
 
-### Correct an attendance row
-PUT {{base}}/attendance/1
+### Correct that attendance row (needs: absence)
+PUT {{base}}/attendance/{{absence.response.body.id}}
 Authorization: Bearer {{manager}}
 Content-Type: application/json
 
@@ -240,12 +282,13 @@ Content-Type: application/json
   "requiresConfirmation": true
 }
 
-### Notices of my daycare, with "9 of 14 confirmed"
+### Notices of my daycare, newest first, with "9 of 14 confirmed"
+# @name notices
 GET {{base}}/notices
 Authorization: Bearer {{manager}}
 
-### Who confirmed and who is pending
-GET {{base}}/notices/1
+### Who confirmed and who is pending, in the newest notice (needs: notices)
+GET {{base}}/notices/{{notices.response.body.$[0].id}}
 Authorization: Bearer {{manager}}
 
 ### Coverage of my daycare (staff present against the minimum of each room and shift)
@@ -263,7 +306,7 @@ Authorization: Bearer {{manager}}
 ### ═══════════════ Director ═══════════════
 
 ### All the staff, or one daycare with ?daycareId=
-GET {{base}}/staff?daycareId=1
+GET {{base}}/staff?daycareId={{cumbres}}
 Authorization: Bearer {{director}}
 
 ### Create a manager in another daycare
@@ -276,24 +319,24 @@ Content-Type: application/json
   "username": "nueva.responsable",
   "email": "nueva.responsable@sonrisascristal.mx",
   "phone": "81 1000 0200",
-  "positionId": 2,
+  "positionId": "{{responsable}}",
   "role": "manager",
-  "daycareId": 2
+  "daycareId": "{{apodaca}}"
 }
 
 ### Change a role
-PUT {{base}}/staff/3
+PUT {{base}}/staff/{{ana}}
 Authorization: Bearer {{director}}
 Content-Type: application/json
 
 { "role": "manager" }
 
 ### Transfer a person to another daycare
-POST {{base}}/staff/4/transfer
+POST {{base}}/staff/{{lucia}}/transfer
 Authorization: Bearer {{director}}
 Content-Type: application/json
 
-{ "daycareId": 2, "notes": "Closer to home" }
+{ "daycareId": "{{apodaca}}", "notes": "Closer to home" }
 
 ### Daycares
 GET {{base}}/daycares
@@ -307,7 +350,7 @@ Content-Type: application/json
 { "name": "Santa Catarina", "latitude": 25.6733, "longitude": -100.4583, "radiusMeters": 150 }
 
 ### Change a daycare
-PUT {{base}}/daycares/1
+PUT {{base}}/daycares/{{cumbres}}
 Authorization: Bearer {{director}}
 Content-Type: application/json
 
@@ -335,7 +378,7 @@ Content-Type: application/json
 { "description": "duelo" }
 
 ### Change the hours of a shift
-PUT {{base}}/catalogs/shifts/2
+PUT {{base}}/catalogs/shifts/{{evening}}
 Authorization: Bearer {{director}}
 Content-Type: application/json
 
@@ -352,8 +395,12 @@ Content-Type: application/json
 
 { "subject": "Día inhábil", "message": "El lunes no hay servicio.", "noticeType": "reminder" }
 
-### Who changed what (the database triggers fill it). Filters: table, recordId, userId
+### Who changed what (the database triggers fill it), newest first. Filters: table, recordId, userId
 GET {{base}}/audit?table=asistencia
+Authorization: Bearer {{director}}
+
+### Only the changes made by Marisol
+GET {{base}}/audit?userId={{managerProfile.response.body.id}}
 Authorization: Bearer {{director}}
 
 ### ═══════════════ Prometheus ═══════════════

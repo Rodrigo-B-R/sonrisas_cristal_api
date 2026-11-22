@@ -4,6 +4,8 @@ Each daycare has a location: the point and the radius (in meters) where the app 
 that a person "is at the daycare".
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
@@ -20,11 +22,11 @@ _load = (joinedload(Daycare.location), selectinload(Daycare.rooms))
 
 @router.get("", response_model=list[DaycareOut])
 def list_daycares(db: DbSession):
-    return db.scalars(select(Daycare).options(*_load).order_by(Daycare.id)).all()
+    return db.scalars(select(Daycare).options(*_load).order_by(Daycare.name)).all()
 
 
 @router.get("/{daycare_id}", response_model=DaycareOut)
-def get_daycare(daycare_id: int, db: DbSession):
+def get_daycare(daycare_id: UUID, db: DbSession):
     daycare = db.scalars(select(Daycare).options(*_load).where(Daycare.id == daycare_id)).first()
     return require_found(daycare, "Daycare not found")
 
@@ -44,7 +46,7 @@ def create_daycare(body: DaycareIn, user: CurrentUser, db: DbSession):
 
 
 @router.put("/{daycare_id}", response_model=DaycareOut)
-def update_daycare(daycare_id: int, body: DaycareUpdateIn, user: CurrentUser, db: DbSession):
+def update_daycare(daycare_id: UUID, body: DaycareUpdateIn, user: CurrentUser, db: DbSession):
     daycare = require_found(
         db.scalars(select(Daycare).options(*_load).where(Daycare.id == daycare_id)).first(), "Daycare not found"
     )

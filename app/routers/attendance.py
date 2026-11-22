@@ -5,6 +5,7 @@ The reports put together schedule + attendance + clock-ins of each day (see serv
 """
 
 from datetime import date
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select
@@ -28,7 +29,7 @@ from app.timeutils import date_range, read_period, today
 router = APIRouter(prefix="/attendance", tags=["Attendance"], dependencies=[Depends(get_current_user)])
 
 
-def _resolve_reason(db, status: str, reason_id: int | None, description: str | None) -> int | None:
+def _resolve_reason(db, status: str, reason_id: UUID | None, description: str | None) -> UUID | None:
     """The reason comes from the absence-reasons catalog: send reasonId or the description.
 
     Absent and incident need one. Returns the reason id (or None).
@@ -40,7 +41,7 @@ def _resolve_reason(db, status: str, reason_id: int | None, description: str | N
         found = db.scalars(select(AbsenceReason).where(AbsenceReason.description == description)).first()
     sent = reason_id is not None or description is not None
     if (sent and found is None) or (status in ("absent", "incident") and found is None):
-        options = [{"id": r.id, "description": r.description} for r in db.scalars(select(AbsenceReason).order_by(AbsenceReason.id))]
+        options = [{"id": r.id, "description": r.description} for r in db.scalars(select(AbsenceReason).order_by(AbsenceReason.description))]
         message = "Invalid reason" if sent else "Absent and incident need a reason (absenceReasonId or absenceReason)"
         raise ApiError(400, message, options=options)
     return found.id if found else None
@@ -58,7 +59,7 @@ def list_attendance(
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate", description="Default: Monday of this week"),
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),
-    daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
+    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
 ):
     """Everyone in the daycare: summary and days of each person. Directors are not included, nor is anyone who had not been hired yet or was already terminated in the whole period."""
     start, end = _period(start_date, end_date)
@@ -89,7 +90,7 @@ def my_attendance(
 
 @router.get("/{user_id}", response_model=SinglePersonAttendanceOut)
 def person_attendance_report(
-    user_id: int,
+    user_id: UUID,
     user: CurrentUser,
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate"),
@@ -138,7 +139,7 @@ def set_attendance(body: AttendanceIn, response: Response, user: CurrentUser, db
 
 
 @router.put("/{attendance_id}", response_model=AttendanceOut)
-def fix_attendance(attendance_id: int, body: AttendanceUpdateIn, user: CurrentUser, db: DbSession):
+def fix_attendance(attendance_id: UUID, body: AttendanceUpdateIn, user: CurrentUser, db: DbSession):
     attendance = require_found(db.get(Attendance, attendance_id))
     if not can_access_daycare(user, attendance.daycare_id):
         raise ApiError(404, "Not found")

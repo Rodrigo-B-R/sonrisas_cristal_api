@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from app.timeutils import today
 from tests.conftest import PASSWORD
+from tests.factories import missing_id
 
 
 def usernames(response):
@@ -50,7 +51,7 @@ def test_director_cannot_use_manager_only_routes(client, login, world):
     headers = login("director")
     assert client.post("/rooms", headers=headers, json={"name": "Nueva", "minStaff": 1}).status_code == 403
     assert client.post("/attendance", headers=headers, json={}).status_code == 403
-    assert client.post("/time-records/batch", headers=headers, json={"userIds": [1]}).status_code == 403
+    assert client.post("/time-records/batch", headers=headers, json={"userIds": [missing_id()]}).status_code == 403
 
 
 def test_director_creates_catalog_entries(client, login):
@@ -93,7 +94,7 @@ def test_other_daycare_is_404_not_403(client, login, world):
     for method, path, body in [
         ("GET", f"/staff/{other}", None),
         ("PUT", f"/staff/{other}", {"name": "Hacked"}),
-        ("POST", f"/staff/{other}/terminate", {"terminationReasonId": 1}),
+        ("POST", f"/staff/{other}/terminate", {"terminationReasonId": world["termination_reason"]}),
         ("POST", f"/staff/{other}/password", None),
         ("GET", f"/schedules/{other}", None),
         ("PUT", f"/schedules/{other}", {"days": []}),
@@ -127,7 +128,7 @@ def test_manager_cannot_modify_another_manager(client, login, world):
     manager = login("manager_a")
     assert client.put(f"/staff/{other_manager}", headers=manager, json={"name": "X"}).status_code == 403
     assert client.post(f"/staff/{other_manager}/password", headers=manager).status_code == 403
-    assert client.post(f"/staff/{other_manager}/terminate", headers=manager, json={"terminationReasonId": 1}).status_code == 403
+    assert client.post(f"/staff/{other_manager}/terminate", headers=manager, json={"terminationReasonId": world["termination_reason"]}).status_code == 403
     # A director can
     assert client.put(f"/staff/{other_manager}", headers=director, json={"name": "Renamed"}).status_code == 200
 
@@ -218,8 +219,8 @@ def test_password_reset_returns_a_working_temporary_password(client, login, worl
 def test_terminate_keeps_the_history_and_blocks_a_second_time(client, login, world):
     manager = login("manager_a")
     person = world["ids"]["employee_a"]
-    assert client.post(f"/staff/{person}/terminate", headers=manager, json={"terminationReasonId": 1}).status_code == 200
-    assert client.post(f"/staff/{person}/terminate", headers=manager, json={"terminationReasonId": 1}).status_code == 409
+    assert client.post(f"/staff/{person}/terminate", headers=manager, json={"terminationReasonId": world["termination_reason"]}).status_code == 200
+    assert client.post(f"/staff/{person}/terminate", headers=manager, json={"terminationReasonId": world["termination_reason"]}).status_code == 409
     assert "employee_a" not in usernames(client.get("/staff", headers=manager))
     assert "employee_a" in usernames(client.get("/staff?active=false", headers=manager))
     detail = client.get(f"/staff/{person}", headers=manager).json()
@@ -227,10 +228,10 @@ def test_terminate_keeps_the_history_and_blocks_a_second_time(client, login, wor
 
 
 def test_nobody_terminates_themselves(client, login, world):
-    response = client.post(f"/staff/{world['ids']['manager_a']}/terminate", headers=login("manager_a"), json={"terminationReasonId": 1})
+    response = client.post(f"/staff/{world['ids']['manager_a']}/terminate", headers=login("manager_a"), json={"terminationReasonId": world["termination_reason"]})
     # a manager cannot touch another manager at all; a director terminating themselves is refused too
     assert response.status_code == 403
-    director = client.post(f"/staff/{world['ids']['director']}/terminate", headers=login("director"), json={"terminationReasonId": 1})
+    director = client.post(f"/staff/{world['ids']['director']}/terminate", headers=login("director"), json={"terminationReasonId": world["termination_reason"]})
     assert director.status_code == 400
     assert director.json() == {"error": "You cannot terminate yourself"}
 
@@ -240,7 +241,7 @@ def test_transfer_validations(client, login, world):
     person = world["ids"]["employee_a"]
     same = client.post(f"/staff/{person}/transfer", headers=director, json={"daycareId": world["daycare_a"]})
     assert same.status_code == 400
-    missing = client.post(f"/staff/{person}/transfer", headers=director, json={"daycareId": 999})
+    missing = client.post(f"/staff/{person}/transfer", headers=director, json={"daycareId": missing_id()})
     assert missing.status_code == 400
     ok = client.post(f"/staff/{person}/transfer", headers=director, json={"daycareId": world["daycare_b"], "notes": "Closer to home"})
     assert ok.status_code == 200

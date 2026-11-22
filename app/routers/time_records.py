@@ -1,6 +1,7 @@
 """/time-records: clock-ins and clock-outs. Each row is an entry; the exit is filled in on the same row."""
 
 from datetime import date
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select
@@ -21,7 +22,7 @@ from app.timeutils import day_end, day_start, read_period, read_timestamp, today
 router = APIRouter(prefix="/time-records", tags=["Time records"], dependencies=[Depends(get_current_user)])
 
 
-def _require_room_and_shift_together(room_id: int | None, shift_id: int | None) -> None:
+def _require_room_and_shift_together(room_id: UUID | None, shift_id: UUID | None) -> None:
     if (room_id is None) != (shift_id is None):
         raise ApiError(400, "Send both roomId and shiftId, or neither")
 
@@ -44,9 +45,9 @@ def list_records(
     db: DbSession,
     start_date: date | None = Query(None, alias="startDate", description="Default: Monday of this week"),
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),
-    user_id: int | None = Query(None, alias="userId"),
+    user_id: UUID | None = Query(None, alias="userId"),
     within_zone: bool | None = Query(None, alias="withinZone"),
-    daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
+    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
 ):
     """Employees see their own records, managers their daycare's, directors all (or one with daycareId)."""
     start, end = read_period(start_date, end_date)
@@ -143,7 +144,7 @@ def clock_in_batch(body: BatchIn, user: CurrentUser, db: DbSession):
 
 
 @router.put("/{record_id}", response_model=TimeRecordOut)
-def fix_record(record_id: int, body: RecordFixIn, user: CurrentUser, db: DbSession):
+def fix_record(record_id: UUID, body: RecordFixIn, user: CurrentUser, db: DbSession):
     """The manager corrects a record directly. The before/after is kept by the audit triggers."""
     record = db.scalars(select(TimeRecord).where(TimeRecord.id == record_id).options(*record_options())).first()
     record = require_found(record)

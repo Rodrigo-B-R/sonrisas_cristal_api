@@ -2,6 +2,7 @@
 
 from datetime import date
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
@@ -28,7 +29,7 @@ def list_movements(
     start_date: date | None = Query(None, alias="startDate", description="Default: the first day of this month"),
     end_date: date | None = Query(None, alias="endDate"),
     type: Literal["hire", "termination", "transfer"] | None = None,
-    daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
+    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
 ):
     start, end = read_period(start_date, end_date, default_start=first_of_month(today()), max_days=400)
     stmt = (
@@ -41,7 +42,7 @@ def list_movements(
             joinedload(Movement.origin_daycare),
             joinedload(Movement.destination_daycare),
         )
-        .order_by(Movement.date.desc(), Movement.id.desc())
+        .order_by(Movement.date.desc(), Movement.created_at.desc())
     )
     if type:
         stmt = stmt.where(Movement.type == MOVEMENT_TO_DB[type])

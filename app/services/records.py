@@ -21,7 +21,7 @@ def record_options():
     return (joinedload(TimeRecord.room), joinedload(TimeRecord.shift), joinedload(TimeRecord.user))
 
 
-def open_record(db: Session, user_id: int) -> TimeRecord | None:
+def open_record(db: Session, user_id: uuid_lib.UUID) -> TimeRecord | None:
     """The clock-in the person has not clocked out of yet."""
     return db.scalars(
         select(TimeRecord)
@@ -51,7 +51,7 @@ def is_within_zone(location: Location, latitude: float | None, longitude: float 
 
 
 def pick_room_and_shift(
-    db: Session, person: User, when: datetime, room_id: int | None, shift_id: int | None
+    db: Session, person: User, when: datetime, room_id: uuid_lib.UUID | None, shift_id: uuid_lib.UUID | None
 ) -> tuple[Room, Shift] | None:
     """The room and shift of a clock-in: the ones sent, or the person's shift closest to the arrival."""
     if room_id is not None and shift_id is not None:
@@ -67,7 +67,7 @@ def pick_room_and_shift(
     return best.room, best.shift
 
 
-def mark_attendance(db: Session, person: User, when: datetime, shift: Shift, recorded_by_id: int) -> Attendance:
+def mark_attendance(db: Session, person: User, when: datetime, shift: Shift, recorded_by_id: uuid_lib.UUID) -> Attendance:
     """Attendance of the day when someone arrives. If there already was one, it is left alone."""
     day = local_date(when)
     existing = db.scalars(
@@ -104,15 +104,15 @@ def clock_in(
     db: Session,
     person: User,
     when: datetime,
-    recorded_by_id: int,
+    recorded_by_id: uuid_lib.UUID,
     source: str,
     *,
     record_uuid: uuid_lib.UUID | None = None,
     latitude: float | None = None,
     longitude: float | None = None,
     within_zone: bool | None = None,
-    room_id: int | None = None,
-    shift_id: int | None = None,
+    room_id: uuid_lib.UUID | None = None,
+    shift_id: uuid_lib.UUID | None = None,
 ) -> ClockInResult:
     """Registers an entry and the day's attendance, in one transaction.
 

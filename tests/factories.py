@@ -1,5 +1,10 @@
-"""Test data: two daycares (A and B), a director, and in each daycare a manager and an employee."""
+"""Test data: two daycares (A and B), a director, and in each daycare a manager and an employee.
 
+Every id is returned as TEXT, the way it travels in JSON: it can go straight into a request body
+or a URL and be compared with a response. Use uuid.UUID(...) only to look a row up with the ORM.
+"""
+
+import uuid
 from datetime import date, time
 
 from app.constants import NO_END, ROLE_TO_DB, WEEKDAY_TO_DB, WEEKDAYS
@@ -27,7 +32,8 @@ def build_world(db, password: str) -> dict:
     evening = Shift(name="vespertino", start_time=time(12, 0), end_time=time(20, 0))
     db.add_all([*roles.values(), position, morning, evening])
     db.add_all([AbsenceReason(description="enfermedad"), AbsenceReason(description="permiso")])
-    db.add(TerminationReason(name="Renuncia"))
+    resignation = TerminationReason(name="Renuncia")
+    db.add(resignation)
 
     daycares = {}
     for key, name, lat in (("a", "Cumbres", 25.7447), ("b", "Apodaca", 25.7817)):
@@ -73,12 +79,18 @@ def build_world(db, password: str) -> dict:
     db.commit()
 
     return {
-        "ids": {name: user.id for name, user in people.items()},
-        "daycare_a": daycares["a"].id,
-        "daycare_b": daycares["b"].id,
-        "room_a": daycares["a"].rooms[0].id,
-        "room_b": daycares["b"].rooms[0].id,
-        "morning": morning.id,
-        "evening": evening.id,
-        "position": position.id,
+        "ids": {name: str(user.id) for name, user in people.items()},
+        "daycare_a": str(daycares["a"].id),
+        "daycare_b": str(daycares["b"].id),
+        "room_a": str(daycares["a"].rooms[0].id),
+        "room_b": str(daycares["b"].rooms[0].id),
+        "morning": str(morning.id),
+        "evening": str(evening.id),
+        "position": str(position.id),
+        "termination_reason": str(resignation.id),
     }
+
+
+def missing_id() -> str:
+    """A valid UUID that is in no table: what "this id does not exist" looks like now."""
+    return str(uuid.uuid4())

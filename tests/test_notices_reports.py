@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from app.routers.reports import _safe_cell
 from app.timeutils import today
+from tests.factories import missing_id
 
 
 # ── Notices ──────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ def test_schedule_validations(client, login, world):
     day = {"day": "monday", "shiftId": world["morning"], "roomId": world["room_a"]}
     assert client.put(f"/schedules/{person}", headers=manager, json={"days": [day, day]}).status_code == 400  # repeated
     assert client.put(f"/schedules/{person}", headers=manager, json={"days": [{**day, "roomId": world["room_b"]}]}).status_code == 400
-    assert client.put(f"/schedules/{person}", headers=manager, json={"days": [{**day, "shiftId": 999}]}).status_code == 400
+    assert client.put(f"/schedules/{person}", headers=manager, json={"days": [{**day, "shiftId": missing_id()}]}).status_code == 400
     assert client.put(f"/schedules/{person}", headers=manager, json={"days": [{**day, "day": "lunes"}]}).status_code == 400
     assert client.put(f"/schedules/{person}", headers=manager, json={"days": []}).status_code == 201  # all days off
 
@@ -176,7 +177,7 @@ def test_coverage_needs_a_daycare_for_directors(client, login, world):
     director = login("director")
     assert client.get("/coverage", headers=director).status_code == 400
     assert client.get(f"/coverage?daycareId={world['daycare_b']}", headers=director).json()["daycare"]["name"] == "Apodaca"
-    assert client.get("/coverage?daycareId=999", headers=director).status_code == 404
+    assert client.get(f"/coverage?daycareId={missing_id()}", headers=director).status_code == 404
 
 
 def test_summary(client, login):
