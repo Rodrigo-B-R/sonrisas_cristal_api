@@ -10,7 +10,6 @@ import uuid as uuid_lib
 
 from sqlalchemy import (
     JSON,
-    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -22,14 +21,16 @@ from sqlalchemy import (
     TypeDecorator,
     UniqueConstraint,
     Uuid,
+    case,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.constants import ROLE_FROM_DB
+from app.constants import ROLE_FROM_DB, WEEKDAYS_DB
 from app.database import Base
 
-# BIGINT in PostgreSQL. SQLite (used in tests) only auto-increments a plain INTEGER key.
-BigId = BigInteger().with_variant(Integer(), "sqlite")
+def _uuid_pk() -> Mapped[uuid_lib.UUID]:
+    """UUID primary key. Generated in Python so it also works on SQLite (no gen_random_uuid there)."""
+    return mapped_column(Uuid, primary_key=True, default=uuid_lib.uuid4)
 
 
 class UTCDateTime(TypeDecorator):
@@ -63,35 +64,35 @@ def _utcnow() -> dt.datetime:
 class Role(Base):
     __tablename__ = "rol"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))  # stored in Spanish, see constants.py
 
 
 class Position(Base):
     __tablename__ = "puesto"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))
 
 
 class TerminationReason(Base):
     __tablename__ = "causa_baja"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))
 
 
 class AbsenceReason(Base):
     __tablename__ = "motivo_ausencia"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     description: Mapped[str] = mapped_column("descripcion", String(255), unique=True)
 
 
 class Shift(Base):
     __tablename__ = "turno"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))
     start_time: Mapped[dt.time] = mapped_column("hora_entrada", Time)
     end_time: Mapped[dt.time] = mapped_column("hora_salida", Time)
@@ -105,7 +106,7 @@ class Location(Base):
 
     __tablename__ = "ubicacion"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))
     latitude: Mapped[float] = mapped_column("latitud", Float)
     longitude: Mapped[float] = mapped_column("longitud", Float)
@@ -115,21 +116,21 @@ class Location(Base):
 class Daycare(Base):
     __tablename__ = "estancia"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))
-    location_id: Mapped[int] = mapped_column("id_ubicacion", ForeignKey("ubicacion.id"))
+    location_id: Mapped[uuid_lib.UUID] = mapped_column("id_ubicacion", ForeignKey("ubicacion.id"))
 
     location: Mapped[Location] = relationship()
-    rooms: Mapped[list["Room"]] = relationship(order_by="Room.id")
+    rooms: Mapped[list["Room"]] = relationship(order_by="Room.name")
 
 
 class Room(Base):
     __tablename__ = "sala"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))
     min_staff: Mapped[int] = mapped_column("minimo_personal", Integer)
-    daycare_id: Mapped[int] = mapped_column("id_estancia", ForeignKey("estancia.id"))
+    daycare_id: Mapped[uuid_lib.UUID] = mapped_column("id_estancia", ForeignKey("estancia.id"))
 
 
 # ── People ───────────────────────────────────────────────────────────
@@ -138,25 +139,27 @@ class Room(Base):
 class User(Base):
     __tablename__ = "usuario"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column("nombre", String(255))
     password_hash: Mapped[str] = mapped_column("password_hash", String(255))  # bcrypt, never the text
     username: Mapped[str] = mapped_column("usuario_login", String(255), unique=True)
     email: Mapped[str] = mapped_column("correo", String(255), unique=True)
     phone: Mapped[str] = mapped_column("celular", String(255))
     is_active: Mapped[bool] = mapped_column("esta_activo", Boolean)
-    role_id: Mapped[int] = mapped_column("id_rol", ForeignKey("rol.id"))
-    position_id: Mapped[int] = mapped_column("id_puesto", ForeignKey("puesto.id"))
-    daycare_id: Mapped[int] = mapped_column("id_estancia", ForeignKey("estancia.id"))
+    role_id: Mapped[uuid_lib.UUID] = mapped_column("id_rol", ForeignKey("rol.id"))
+    position_id: Mapped[uuid_lib.UUID] = mapped_column("id_puesto", ForeignKey("puesto.id"))
+    daycare_id: Mapped[uuid_lib.UUID] = mapped_column("id_estancia", ForeignKey("estancia.id"))
 
     role: Mapped[Role] = relationship()
     position: Mapped[Position] = relationship()
     daycare: Mapped[Daycare] = relationship()
-    schedules: Mapped[list["Schedule"]] = relationship(back_populates="user", order_by="Schedule.id")
+    schedules: Mapped[list["Schedule"]] = relationship(
+        back_populates="user", order_by=lambda: (Schedule.valid_from, Schedule.created_at)
+    )
     movements: Mapped[list["Movement"]] = relationship(
         back_populates="user",
         foreign_keys="Movement.user_id",
-        order_by=lambda: (Movement.date, Movement.id),
+        order_by=lambda: (Movement.date, Movement.created_at),
     )
 
     @property
@@ -170,15 +173,19 @@ class Movement(Base):
 
     __tablename__ = "movimiento_usuario"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     type: Mapped[str] = mapped_column("tipo", String(255))  # alta | baja | traslado
     date: Mapped[dt.date] = mapped_column("fecha", Date)
     notes: Mapped[str | None] = mapped_column("observaciones", String(255))
-    user_id: Mapped[int] = mapped_column("id_usuario_del_movimiento", ForeignKey("usuario.id"))
-    done_by_id: Mapped[int] = mapped_column("id_usuario_que_movio", ForeignKey("usuario.id"))
-    termination_reason_id: Mapped[int | None] = mapped_column("id_causa_baja", ForeignKey("causa_baja.id"))
-    origin_daycare_id: Mapped[int | None] = mapped_column("id_estancia_origen", ForeignKey("estancia.id"))
-    destination_daycare_id: Mapped[int | None] = mapped_column("id_estancia_destino", ForeignKey("estancia.id"))
+    # Ids are random now: this is what orders two movements of the same day.
+    created_at: Mapped[dt.datetime] = mapped_column("creado_en", UTCDateTime, default=_utcnow)
+    user_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario_del_movimiento", ForeignKey("usuario.id"))
+    done_by_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario_que_movio", ForeignKey("usuario.id"))
+    termination_reason_id: Mapped[uuid_lib.UUID | None] = mapped_column("id_causa_baja", ForeignKey("causa_baja.id"))
+    origin_daycare_id: Mapped[uuid_lib.UUID | None] = mapped_column("id_estancia_origen", ForeignKey("estancia.id"))
+    destination_daycare_id: Mapped[uuid_lib.UUID | None] = mapped_column(
+        "id_estancia_destino", ForeignKey("estancia.id")
+    )
 
     user: Mapped[User] = relationship(foreign_keys=[user_id], back_populates="movements")
     done_by: Mapped[User] = relationship(foreign_keys=[done_by_id])
@@ -193,13 +200,14 @@ class Movement(Base):
 class Notice(Base):
     __tablename__ = "aviso"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     subject: Mapped[str] = mapped_column("asunto", String(255))
     notice_type: Mapped[str] = mapped_column("tipo_aviso", String(255))
     message: Mapped[str] = mapped_column("mensaje", String(255))
     requires_confirmation: Mapped[bool] = mapped_column("requiere_confirmacion", Boolean, default=False)
-    author_id: Mapped[int] = mapped_column("id_usuario_envia", ForeignKey("usuario.id"))
-    daycare_id: Mapped[int | None] = mapped_column("id_estancia", ForeignKey("estancia.id"))  # NULL = general
+    created_at: Mapped[dt.datetime] = mapped_column("creado_en", UTCDateTime, default=_utcnow)  # orders "newest first"
+    author_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario_envia", ForeignKey("usuario.id"))
+    daycare_id: Mapped[uuid_lib.UUID | None] = mapped_column("id_estancia", ForeignKey("estancia.id"))  # NULL = general
 
     author: Mapped[User] = relationship()
     recipients: Mapped[list["NoticeRecipient"]] = relationship(back_populates="notice")
@@ -208,8 +216,8 @@ class Notice(Base):
 class NoticeRecipient(Base):
     __tablename__ = "aviso_usuario"
 
-    notice_id: Mapped[int] = mapped_column("id_aviso", ForeignKey("aviso.id"), primary_key=True)
-    user_id: Mapped[int] = mapped_column("id_usuario", ForeignKey("usuario.id"), primary_key=True)
+    notice_id: Mapped[uuid_lib.UUID] = mapped_column("id_aviso", ForeignKey("aviso.id"), primary_key=True)
+    user_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario", ForeignKey("usuario.id"), primary_key=True)
     is_read: Mapped[bool] = mapped_column("leido", Boolean, default=False)
     read_at: Mapped[dt.datetime | None] = mapped_column("leido_en", UTCDateTime)
 
@@ -225,24 +233,30 @@ class Schedule(Base):
 
     __tablename__ = "horario"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
-    user_id: Mapped[int] = mapped_column("id_usuario", ForeignKey("usuario.id"))
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
+    user_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario", ForeignKey("usuario.id"))
     valid_from: Mapped[dt.date] = mapped_column("vigente_desde", Date)
     valid_until: Mapped[dt.date] = mapped_column("vigente_hasta", Date)
+    # When two schedules cover the same day, the one saved last wins (it used to be the highest id)
+    created_at: Mapped[dt.datetime] = mapped_column("creado_en", UTCDateTime, default=_utcnow)
 
     user: Mapped[User] = relationship(back_populates="schedules")
-    days: Mapped[list["ScheduleDay"]] = relationship(back_populates="schedule", order_by="ScheduleDay.id")
+    days: Mapped[list["ScheduleDay"]] = relationship(
+        back_populates="schedule",
+        # Monday first. Ids are random, so they cannot keep the order any more.
+        order_by=lambda: case({day: index for index, day in enumerate(WEEKDAYS_DB)}, value=ScheduleDay.weekday),
+    )
 
 
 class ScheduleDay(Base):
     __tablename__ = "horario_dia"
     __table_args__ = (UniqueConstraint("id_horario", "dia_de_semana", "id_turno", "id_sala", name="horario_dia_unico"),)
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     weekday: Mapped[str] = mapped_column("dia_de_semana", String(255))  # lunes ... domingo
-    schedule_id: Mapped[int] = mapped_column("id_horario", ForeignKey("horario.id"))
-    shift_id: Mapped[int] = mapped_column("id_turno", ForeignKey("turno.id"))
-    room_id: Mapped[int] = mapped_column("id_sala", ForeignKey("sala.id"))
+    schedule_id: Mapped[uuid_lib.UUID] = mapped_column("id_horario", ForeignKey("horario.id"))
+    shift_id: Mapped[uuid_lib.UUID] = mapped_column("id_turno", ForeignKey("turno.id"))
+    room_id: Mapped[uuid_lib.UUID] = mapped_column("id_sala", ForeignKey("sala.id"))
 
     schedule: Mapped[Schedule] = relationship(back_populates="days")
     shift: Mapped[Shift] = relationship()
@@ -257,17 +271,17 @@ class TimeRecord(Base):
 
     __tablename__ = "registro_entradas"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     uuid: Mapped[uuid_lib.UUID] = mapped_column("uuid", Uuid, unique=True)  # made by the phone: no duplicates on retry
     clock_in_at: Mapped[dt.datetime] = mapped_column("fecha_hora_entrada", UTCDateTime)
     clock_out_at: Mapped[dt.datetime | None] = mapped_column("fecha_hora_salida", UTCDateTime)
     source: Mapped[str] = mapped_column("origen_registro", String(255))  # app | responsable
     within_zone: Mapped[bool] = mapped_column("dentro_de_zona", Boolean)
-    user_id: Mapped[int] = mapped_column("id_usuario_entrada", ForeignKey("usuario.id"))
-    recorded_by_id: Mapped[int] = mapped_column("id_usuario_registro", ForeignKey("usuario.id"))
-    location_id: Mapped[int] = mapped_column("id_ubicacion", ForeignKey("ubicacion.id"))
-    room_id: Mapped[int] = mapped_column("id_sala", ForeignKey("sala.id"))
-    shift_id: Mapped[int] = mapped_column("id_turno", ForeignKey("turno.id"))
+    user_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario_entrada", ForeignKey("usuario.id"))
+    recorded_by_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario_registro", ForeignKey("usuario.id"))
+    location_id: Mapped[uuid_lib.UUID] = mapped_column("id_ubicacion", ForeignKey("ubicacion.id"))
+    room_id: Mapped[uuid_lib.UUID] = mapped_column("id_sala", ForeignKey("sala.id"))
+    shift_id: Mapped[uuid_lib.UUID] = mapped_column("id_turno", ForeignKey("turno.id"))
 
     user: Mapped[User] = relationship(foreign_keys=[user_id])
     room: Mapped[Room] = relationship()
@@ -278,13 +292,15 @@ class Attendance(Base):
     __tablename__ = "asistencia"
     __table_args__ = (UniqueConstraint("id_usuario_que_asistio", "id_estancia", "fecha", name="asistencia_unica"),)
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()
     date: Mapped[dt.date] = mapped_column("fecha", Date)
     status: Mapped[str] = mapped_column("estado", String(255))  # presente | retardo | falta | incidencia
-    absence_reason_id: Mapped[int | None] = mapped_column("id_motivo_ausencia", ForeignKey("motivo_ausencia.id"))
-    user_id: Mapped[int] = mapped_column("id_usuario_que_asistio", ForeignKey("usuario.id"))
-    recorded_by_id: Mapped[int] = mapped_column("id_usuario_registro", ForeignKey("usuario.id"))
-    daycare_id: Mapped[int] = mapped_column("id_estancia", ForeignKey("estancia.id"))
+    absence_reason_id: Mapped[uuid_lib.UUID | None] = mapped_column(
+        "id_motivo_ausencia", ForeignKey("motivo_ausencia.id")
+    )
+    user_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario_que_asistio", ForeignKey("usuario.id"))
+    recorded_by_id: Mapped[uuid_lib.UUID] = mapped_column("id_usuario_registro", ForeignKey("usuario.id"))
+    daycare_id: Mapped[uuid_lib.UUID] = mapped_column("id_estancia", ForeignKey("estancia.id"))
 
     absence_reason: Mapped[AbsenceReason | None] = relationship()
 
@@ -294,11 +310,11 @@ class AuditLog(Base):
 
     __tablename__ = "auditoria"
 
-    id: Mapped[int] = mapped_column(BigId, primary_key=True)
-    user_id: Mapped[int | None] = mapped_column("id_usuario", ForeignKey("usuario.id"))
+    id: Mapped[uuid_lib.UUID] = _uuid_pk()  # rows come from the triggers (gen_random_uuid in PostgreSQL)
+    user_id: Mapped[uuid_lib.UUID | None] = mapped_column("id_usuario", ForeignKey("usuario.id"))
     action: Mapped[str] = mapped_column("accion", String(255))  # INSERT | UPDATE | DELETE
     table_name: Mapped[str] = mapped_column("tabla", String(255))
-    record_id: Mapped[int] = mapped_column("id_registro", BigId)
+    record_id: Mapped[uuid_lib.UUID] = mapped_column("id_registro", Uuid)
     previous_data: Mapped[dict | None] = mapped_column("datos_anteriores", JSON)
     new_data: Mapped[dict | None] = mapped_column("datos_nuevos", JSON)
     created_at: Mapped[dt.datetime] = mapped_column("creado_en", UTCDateTime, default=_utcnow)

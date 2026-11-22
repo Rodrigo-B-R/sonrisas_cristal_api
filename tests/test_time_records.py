@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 
 from app.timeutils import today
+from tests.factories import missing_id
 
 YESTERDAY = today() - timedelta(days=1)
 DAY = str(YESTERDAY)
@@ -188,17 +189,17 @@ def test_status_screen(client, login, world):
 
 
 def test_batch_clock_in(client, login, world):
-    ids = world["ids"]
+    ids, nobody = world["ids"], missing_id()
     response = client.post(
         "/time-records/batch",
         headers=login("manager_a"),
-        json={"userIds": [ids["employee_a"], ids["employee_b"], 9999], "occurredAt": f"{DAY}T07:00:00"},
+        json={"userIds": [ids["employee_a"], ids["employee_b"], nobody], "occurredAt": f"{DAY}T07:00:00"},
     )
     assert response.status_code == 201, response.text
     body = response.json()
     assert [r["userId"] for r in body["recorded"]] == [ids["employee_a"]]
     assert body["recorded"][0]["source"] == "manager"
-    assert {item["userId"] for item in body["skipped"]} == {ids["employee_b"], 9999}  # not in this daycare
+    assert {item["userId"] for item in body["skipped"]} == {ids["employee_b"], nobody}  # not in this daycare
 
 
 def test_batch_skips_people_already_inside(client, login, world):

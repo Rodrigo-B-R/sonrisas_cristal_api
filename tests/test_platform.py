@@ -4,7 +4,8 @@ import json
 import logging
 
 from app.logging_config import JsonFormatter, request_log
-from tests.conftest import PASSWORD
+from tests.conftest import PASSWORD, as_logged
+from tests.factories import missing_id
 
 
 # ── Error format ─────────────────────────────────────────────────────
@@ -35,7 +36,9 @@ def test_invalid_json_and_invalid_ids(client, login):
     assert broken.status_code == 400 and broken.json()["details"][0]["message"] == "The body is not valid JSON"
     bad_id = client.get("/staff/abc", headers=headers)
     assert bad_id.status_code == 400 and bad_id.json()["details"][0]["in"] == "path"
-    assert client.get("/staff/99999", headers=headers).json() == {"error": "Not found"}
+    # an old numeric id is not a UUID: invalid (400), not "not found"
+    assert client.get("/staff/3", headers=headers).status_code == 400
+    assert client.get(f"/staff/{missing_id()}", headers=headers).json() == {"error": "Not found"}
 
 
 def test_unhandled_errors_are_a_generic_500_with_a_request_id(client, login, monkeypatch):
@@ -139,21 +142,22 @@ def test_every_request_is_logged_with_user_status_and_time(client, login, world)
 
     class Collector(logging.Handler):
         def emit(self, record):
-            lines.append(record.fields)
+            lines.append(as_logged(record.fields))
 
     handler = Collector()
     request_log.addHandler(handler)
+    nobody = f"/staff/{missing_id()}"
     try:
         headers = login("manager_a")
         client.get("/staff", headers=headers)
-        client.get("/staff/999999", headers=headers)
+        client.get(nobody, headers=headers)
     finally:
         request_log.removeHandler(handler)
     staff = [line for line in lines if line["path"] == "/staff"][0]
     assert staff["method"] == "GET" and staff["status"] == 200
     assert staff["user_id"] == world["ids"]["manager_a"]
     assert staff["duration_ms"] >= 0 and staff["request_id"] and staff["ip"]
-    assert [line["status"] for line in lines if line["path"] == "/staff/999999"] == [404]
+    assert [line["status"] for line in lines if line["path"] == nobody] == [404]
 
 
 def test_log_lines_are_json_and_cannot_be_forged(client):
@@ -176,13 +180,14 @@ def test_metrics_need_the_token(client, login):
 
 def test_metrics_content(client, login):
     client.get("/staff", headers=login("manager_a"))
-    client.get("/staff/12345", headers=login("manager_a"))
+    someone = missing_id()
+    client.get(f"/staff/{someone}", headers=login("manager_a"))
     response = client.get("/metrics", headers={"Authorization": "Bearer metrics-test-token"})
     assert response.status_code == 200
     text = response.text
     assert 'http_requests_total{method="GET",route="/staff",status="200"}' in text
     # routes are labelled with their template, so ids do not create a series each
-    assert 'route="/staff/{user_id}"' in text and "12345" not in text
+    assert 'route="/staff/{user_id}"' in text and someone not in text
     assert "http_request_duration_seconds_bucket" in text
     assert "db_pool_connections" in text
 

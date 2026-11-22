@@ -5,6 +5,7 @@ new one is created, so we always know what a person's schedule was on any past d
 """
 
 from datetime import date, timedelta
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -53,7 +54,7 @@ def list_schedules(
     user: CurrentUser,
     db: DbSession,
     day: date | None = Query(None, alias="date", description="Default: today"),
-    daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
+    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
 ):
     """The schedule of every active person in the daycare on a date."""
     scope = daycare_scope(user, daycare_id)
@@ -63,7 +64,7 @@ def list_schedules(
 
 @router.get("/{user_id}", response_model=PersonScheduleOut)
 def get_schedule(
-    user_id: int,
+    user_id: UUID,
     user: CurrentUser,
     db: DbSession,
     day: date | None = Query(None, alias="date", description="Default: today"),
@@ -77,7 +78,7 @@ def get_schedule(
 
 
 @router.put("/{user_id}", response_model=ScheduleOut, status_code=201)
-def replace_schedule(user_id: int, body: ScheduleIn, user: CurrentUser, db: DbSession):
+def replace_schedule(user_id: UUID, body: ScheduleIn, user: CurrentUser, db: DbSession):
     """Creates a new schedule for the person, valid from validFrom (default today).
 
     "days" lists the days they work. A weekday that is not listed is a day off.
@@ -109,7 +110,7 @@ def replace_schedule(user_id: int, body: ScheduleIn, user: CurrentUser, db: DbSe
         )
     ):
         old.valid_until = valid_from - timedelta(days=1)
-    # Those that start that same day or later are covered by the new one (it has a higher id)
+    # Those that start that same day or later are covered by the new one (it is saved last: creado_en)
     schedule = Schedule(
         user_id=person.id,
         valid_from=valid_from,

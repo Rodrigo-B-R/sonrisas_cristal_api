@@ -6,6 +6,7 @@ Managers and directors only. A manager works inside their own daycare, only chan
 
 import logging
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
@@ -58,7 +59,7 @@ def _can_see(user: User, person: User) -> bool:
     return user.role_code == "director" or person.role_code != "director"
 
 
-def find_person(db, user: User, person_id: int) -> User:
+def find_person(db, user: User, person_id: UUID) -> User:
     person = db.scalars(select(User).options(*_person_options).where(User.id == person_id)).first()
     if person is None or not _can_see(user, person):
         raise ApiError(404, "Not found")
@@ -87,7 +88,7 @@ def list_staff(
     user: CurrentUser,
     db: DbSession,
     active: Literal["true", "false", "all"] = Query("true", description="true: active staff, false: terminated, all: both"),
-    daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
+    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
 ):
     stmt = (
         select(User)
@@ -106,12 +107,13 @@ def list_staff(
 
 
 @router.get("/{user_id}", response_model=StaffDetailOut)
-def get_person(user_id: int, user: CurrentUser, db: DbSession):
+def get_person(user_id: UUID, user: CurrentUser, db: DbSession):
     """The profile with today's schedule and the history of movements."""
     person = find_person(db, user, user_id)
     data = UserOut.model_validate(person).model_dump()
     data["movements"] = [
-        MovementOut.model_validate(m) for m in sorted(person.movements, key=lambda m: m.id, reverse=True)
+        # newest recorded first (it was the highest id; ids are random UUIDs now)
+        MovementOut.model_validate(m) for m in sorted(person.movements, key=lambda m: m.created_at, reverse=True)
     ]
     data["current_schedule"] = current_schedule(person.schedules, today())
     return data
@@ -171,7 +173,7 @@ def create_person(request: Request, body: StaffCreateIn, user: CurrentUser, db: 
 
 
 @router.put("/{user_id}", response_model=UserOut)
-def update_person(request: Request, user_id: int, body: StaffUpdateIn, user: CurrentUser, db: DbSession):
+def update_person(request: Request, user_id: UUID, body: StaffUpdateIn, user: CurrentUser, db: DbSession):
     person = find_person(db, user, user_id)
     _require_can_modify(user, person, "Only a director can modify another manager")
     if body.role is not None and user.role_code != "director":
@@ -200,7 +202,7 @@ def update_person(request: Request, user_id: int, body: StaffUpdateIn, user: Cur
 
 
 @router.post("/{user_id}/terminate", response_model=UserOut)
-def terminate_person(request: Request, user_id: int, body: TerminateIn, user: CurrentUser, db: DbSession):
+def terminate_person(request: Request, user_id: UUID, body: TerminateIn, user: CurrentUser, db: DbSession):
     """The person is not deleted: they leave the active staff and their history stays."""
     person = find_person(db, user, user_id)
     _require_can_modify(user, person, "Only a director can terminate a manager")
@@ -230,7 +232,7 @@ def terminate_person(request: Request, user_id: int, body: TerminateIn, user: Cu
 
 
 @router.post("/{user_id}/transfer", response_model=UserOut)
-def transfer_person(request: Request, user_id: int, body: TransferIn, user: CurrentUser, db: DbSession):
+def transfer_person(request: Request, user_id: UUID, body: TransferIn, user: CurrentUser, db: DbSession):
     person = find_person(db, user, user_id)
     _require_can_modify(user, person, "Only a director can transfer a manager")
     if not person.is_active:
@@ -260,7 +262,7 @@ def transfer_person(request: Request, user_id: int, body: TransferIn, user: Curr
 
 
 @router.post("/{user_id}/password", response_model=TemporaryPasswordOut)
-def reset_password(request: Request, user_id: int, user: CurrentUser, db: DbSession):
+def reset_password(request: Request, user_id: UUID, user: CurrentUser, db: DbSession):
     """"Forgot your password? Ask your manager." Sets a new temporary password and shows it once."""
     person = find_person(db, user, user_id)
     _require_can_modify(user, person, "Only a director can reset the password of a manager")

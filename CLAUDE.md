@@ -4,12 +4,12 @@ Context for a new session. Read it before changing anything. The README (Spanish
 
 ## 1. What this is
 
-REST API for the Android app of **Sonrisas de Cristal**, a group of daycares ("estancias") in Monterrey, Mexico. It manages staff, weekly schedules, clock-in/clock-out with GPS, attendance, time corrections, notices, coverage reports and an audit trail.
+REST API for the Android app of **Sonrisas de Cristal**, a group of daycares ("estancias") in Monterrey, Mexico. It manages staff, weekly schedules, clock-in/clock-out with GPS, attendance, manager fixes of time records, notices, coverage reports and an audit trail.
 
 It is a **migration of a Node.js + Express + Prisma API** (still available in the git history before commit `53a314e` and at tag `v1-node`) to **Python + FastAPI + SQLAlchemy**. The Android app is **not implemented yet**, so the API contract is free to change.
 
 - **Everything is in English**: code, comments, routes, JSON fields, error messages. The README is the exception (Spanish, like the rest of the team's docs). Sample data in the seed (names, positions, room names) is Spanish on purpose.
-- Domain words: `estancia` = **daycare**, `sala` = **room**, `turno` = **shift**, `responsable` = **manager**, `direccion` = **director**, `empleada` = **employee**, `registro de entrada` = **time record**, `aviso` = **notice**, `horario` = **schedule**, `asistencia` = **attendance**, `correccion` = **correction**, `personal` = **staff**, `movimiento` = **movement** (hire/termination/transfer).
+- Domain words: `estancia` = **daycare**, `sala` = **room**, `turno` = **shift**, `responsable` = **manager**, `direccion` = **director**, `empleada` = **employee**, `registro de entrada` = **time record**, `aviso` = **notice**, `horario` = **schedule**, `asistencia` = **attendance**, `personal` = **staff**, `movimiento` = **movement** (hire/termination/transfer).
 
 ## 2. Repository and git state
 
@@ -53,7 +53,7 @@ app/
   main.py            FastAPI app, middleware (request id, JSON request log, metrics, headers), routers, error handlers
   config.py          Settings (pydantic-settings). Validates JWT_SECRET (>=32 chars, rejects example value)
   database.py        engine, SessionLocal (expire_on_commit=False), get_db, set_audit_user
-  models.py          18 tables with English names over the real Spanish columns; UTCDateTime type
+  models.py          17 tables with English names over the real Spanish columns; UUID keys (_uuid_pk); UTCDateTime type
   schemas.py         Pydantic: `In` (requests, extra="forbid", camelCase) and `Out` (responses, from_attributes)
   dependencies.py    get_current_user (token + user from DB + Casbin check), aliases (CurrentUser, DbSession)
   authz/             Casbin engine: model.conf (RBAC), policy.csv (role -> route template + method), is_allowed()
@@ -70,7 +70,7 @@ app/
 scripts/             create_tables.py, seed.py
 tests/               conftest.py, factories.py, test_*.py (SQLite), e2e_postgres.py (real PostgreSQL, not collected by pytest)
 requirements.txt / requirements-dev.txt / pytest.ini / Dockerfile / docker-compose.yml / .env.example
-pruebas.http         REST Client requests (English routes, tokens captured automatically)
+pruebas.http         REST Client requests (English routes; tokens AND ids captured from responses, looked up by name/username)
 ```
 
 Docker image: copies only `app/`, `scripts/`, `requirements.txt`; runs as user `app` (uid 1000), `ENVIRONMENT=production`, **one uvicorn worker** (in-memory counters), HEALTHCHECK on `GET /`.
@@ -176,10 +176,14 @@ Day statuses in reports: `present, late, absent, incident` (stored) plus compute
 | GET | `/export/attendance` | M/D | CSV (UTF-8 BOM, all fields quoted, formula-injection safe) |
 | GET | `/audit` | D | `?startDate,endDate,table,recordId,userId`; last 500 changes |
 
-Node → FastAPI route names: `/personal`→`/staff`, `/registros`→`/time-records` (`/entrada`→`/clock-in`, `/salida`→`/clock-out`, `/turno`→`/batch`, `/estado`→`/status`), `/estancias`→`/daycares`, `/salas`→`/rooms`, `/horarios`→`/schedules`, `/correcciones`→`/corrections` (`aprobar/rechazar`→`approve/reject`), `/asistencias`→`/attendance`, `/avisos`→`/notices` (`/lectura`→`/read`), `/auditoria`→`/audit`, `/catalogos`→`/catalogs`, `/perfil`→`/profile`, `/cobertura|resumen|estadisticas|exportar`→`/coverage|summary|statistics|export`.
+Node → FastAPI route names: `/personal`→`/staff`, `/registros`→`/time-records` (`/entrada`→`/clock-in`, `/salida`→`/clock-out`, `/turno`→`/batch`, `/estado`→`/status`), `/estancias`→`/daycares`, `/salas`→`/rooms`, `/horarios`→`/schedules`, `/correcciones`→`/corrections` (later **removed** with the `correccion_registro` table; managers fix records with `PUT /time-records/{id}`), `/asistencias`→`/attendance`, `/avisos`→`/notices` (`/lectura`→`/read`), `/auditoria`→`/audit`, `/catalogos`→`/catalogs`, `/perfil`→`/profile`, `/cobertura|resumen|estadisticas|exportar`→`/coverage|summary|statistics|export`.
 Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/inbox`); periods use `startDate/endDate`; 403 instead of silently ignoring forbidden fields; unknown body fields → 400; `/metrics` off without token; `POST /logout` is new.
 
 ## 7. Design decisions you must not undo by accident
+
+**Every id is a UUID** (security requirement: ids must not be guessable or countable). PostgreSQL makes them with `gen_random_uuid()`; `models.py` also sets `default=uuid.uuid4` (`_uuid_pk()`) so inserts work on SQLite. That includes `auditoria.id` and the composite key of `aviso_usuario`. JSON carries them as text; a request with a malformed id (`/staff/3`, `"roomId": 5`) is a **400**, an unknown valid one is a 404. Tokens keep the user id as text in `sub`; a non-UUID `sub` (old tokens said `"3"`) is a 401.
+
+**Never order by `id`** (random now). The "newest" comes from `creado_en` (`TIMESTAMP(3)`, `clock_timestamp()`), which exists for exactly that in `aviso`, `movimiento_usuario`, `horario` and `auditoria`. `horario.creado_en` is not cosmetic: when two schedules cover the same day (saved twice on one day, or replacing one planned for later; nothing can be deleted) `current_schedule()` picks the **last saved**, and lateness, absences, coverage and statistics depend on it. Lists without a time are ordered by name (rooms, daycares, roles, positions, reasons), shifts by `start_time`, schedule days Monday→Sunday (`case` over `WEEKDAYS_DB`).
 
 **Two vocabularies.** The DB has CHECK constraints on Spanish values (`empleada/responsable/direccion`, `presente/retardo/falta/incidencia`, `lunes…`, `alta/baja/traslado`, `pendiente/aprobada/rechazada`, `app/responsable`, `cambio_horario/reunion/recordatorio/urgente`). The API speaks English. **`app/constants.py` is the only place that translates** (`*_TO_DB` / `*_FROM_DB`). Output schemas translate with a `field_validator(mode="before")`. Never compare an API value with a DB value.
 
@@ -187,9 +191,9 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 
 **Authorization = three layers.** (1) `get_current_user` → 401. (2) **Casbin** (`app/authz/`): `get_current_user` calls `authorize()`, which asks `is_allowed(role, route template, method)`; the rules are in `policy.csv` (the `authenticated` group = every role). **Default deny: a route not listed answers 403** (test `test_every_route_is_in_the_policy_or_public` fails if you add a route and forget the policy line; public routes `/`, `/login`, `/metrics` are exempt). 403 `Your role cannot do this`. The route template (`/staff/{user_id}`) is what is matched, taken from `request.scope["route"].path_format`. (3) data scope via `access.py` → **404 (not 403)** for another daycare's data, so existence is not confirmed. Every router except `session` and `metrics` also declares `dependencies=[Depends(get_current_user)]` or takes `CurrentUser` (secure by default). Managers never see directors; managers only modify employees (director: anyone) — those two rules are data rules and stay in Python.
 
-**Validation.** Pydantic `In` models: camelCase aliases, `extra="forbid"` (no mass assignment), stripped strings. Validation errors → `400 {"error":"Invalid data","details":[{"in","field","message"}]}` (input values are never echoed). Domain errors raise `ApiError(status, message, **extra)`. One format everywhere: `{"error": "..."}`. IntegrityError (UNIQUE→409, FK→409, CHECK/NOT NULL→400), DataError→400, unhandled→500 `{"error":"Internal error","requestId"}` (stack only in the log).
+**Validation.** Pydantic `In` models: camelCase aliases, `extra="forbid"` (no mass assignment), stripped strings. Validation errors → `400 {"error":"Invalid data","details":[{"in","field","message"}]}` (input values are never echoed). Domain errors raise `ApiError(status, message, **extra)`; `error_response` passes the content through `jsonable_encoder`, so extras may carry UUIDs (e.g. the `options` of absence reasons). One format everywhere: `{"error": "..."}`. IntegrityError (UNIQUE→409, FK→409, CHECK/NOT NULL→400), DataError→400, unhandled→500 `{"error":"Internal error","requestId"}` (stack only in the log).
 
-**Audit trail.** Triggers in the DB audit `registro_entradas` and `asistencia` into `auditoria` and read the author from `current_setting('app.id_usuario')`. **Every write to those three tables must call `set_audit_user(db, user_id)` before writing and commit in the same transaction** (`SELECT set_config('app.id_usuario', :id, true)`; no-op on SQLite). Writes without it are audited with `NULL` author. `auditoria` is read-only for `api_user`.
+**Audit trail.** Triggers in the DB audit `registro_entradas` and `asistencia` into `auditoria` and read the author from `current_setting('app.id_usuario')`. **Every write to those two tables must call `set_audit_user(db, user_id)` before writing and commit in the same transaction** (`SELECT set_config('app.id_usuario', :id, true)`; no-op on SQLite). Writes without it are audited with `NULL` author. `auditoria` is read-only for `api_user`.
 
 **Time.** Timestamps are stored/returned in UTC; responses format them as `2026-11-04T13:05:00.000Z` (`UtcTimestamp`). Times are `"HH:MM"` (`ShortTime`). Dates are `YYYY-MM-DD`. "Today", lateness and attendance days use `TZ` (default `America/Monterrey`, UTC-6, no DST). A client timestamp without offset is read in `TZ`; it cannot be more than 5 minutes in the future. Clock-ins carry a client-made `uuid` so offline retries never duplicate.
 
@@ -213,9 +217,9 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 
 ## 9. Database facts (repo `sonrisas_cristal_db`)
 
-- PostgreSQL 17, 18 tables, schema in `init/01-init.sql` (run only on a fresh volume). Ids are `BIGINT GENERATED BY DEFAULT AS IDENTITY`. Container `sonrisas_postgres`, db name in that repo's `.env`.
+- PostgreSQL 17, **17 tables** (`correccion_registro` was removed), schema in `init/01-init.sql` (run only on a fresh volume, so a schema change means rebuilding the volume). Every id is `UUID PRIMARY KEY DEFAULT gen_random_uuid()`, every FK is `UUID`. `creado_en TIMESTAMP(3) WITH TIME ZONE DEFAULT clock_timestamp()` in `aviso`, `movimiento_usuario`, `horario` and `auditoria` (see §7). The audit trigger casts `app.id_usuario` with `::UUID`. Container `sonrisas_postgres`, db name in that repo's `.env`.
 - The API connects as **`api_user`**: `SELECT, INSERT, UPDATE` only (**no DELETE, no DDL**), read-only on `auditoria`. Use the owner (`postgres`) only for `scripts/create_tables.py`.
-- Key constraints the API relies on: one attendance per (user, daycare, date); `absent`/`incident` need `id_motivo_ausencia`; `movimiento_usuario` fields per type (hire: destination only; termination: origin + reason; transfer: origin ≠ destination); `registro_entradas.uuid` unique and `clock_out > clock_in`; `aviso_usuario.leido = (leido_en IS NOT NULL)`; corrections: pending has no resolver, resolved has both resolver and time; `usuario.usuario_login` and `correo` unique.
+- Key constraints the API relies on: one attendance per (user, daycare, date); `absent`/`incident` need `id_motivo_ausencia`; `movimiento_usuario` fields per type (hire: destination only; termination: origin + reason; transfer: origin ≠ destination); `registro_entradas.uuid` unique and `clock_out > clock_in`; `aviso_usuario.leido = (leido_en IS NOT NULL)`; `usuario.usuario_login` and `correo` unique.
 - `init/03-monitor-user.sh` creates the `monitor` user (role `pg_monitor`, no table data access) for `postgres_exporter`, from `MONITOR_DB_PASSWORD`; it is skipped if that variable is empty. Like every `init/` script it only runs on an **empty volume**; on an existing DB create the role by hand (see the infra README).
 - Catalogs are created **empty**; `scripts/seed.py` fills them for demos (5 daycares, 9 users, schedules, a welcome notice).
 - **`DATABASE_URL` passwords with special characters (`# * ] ! = ^ @ :`) must be percent-encoded.** The real `api_user` password has such characters. `python -c "import os,urllib.parse as u;print(u.quote(os.environ['API_DB_PASSWORD'],safe=''))"`. **Never print secrets**: a connection error can echo the URL (it happened once in this project).
@@ -231,17 +235,29 @@ Deliberate deviations from Node: role-polymorphic routes were split (`/me`, `/in
 python -m venv .venv ; .venv\Scripts\Activate.ps1 ; pip install -r requirements-dev.txt
 uvicorn app.main:app --reload --port 8000          # /docs when ENVIRONMENT=development
 python -m scripts.seed                               # demo data (accounts below)
-pytest                                               # 110 tests, SQLite, ~30 s, no PostgreSQL needed
+pytest                                               # 122 tests, SQLite, no PostgreSQL needed
 python -m pyflakes app scripts tests                 # must print nothing
 ```
 
-Seed accounts (password = `SEED_PASSWORD`, default `Cristal2026`): `ana.torres` (employee), `marisol.garcia` (manager of Cumbres), `direccion` (director). In a fresh seeded DB: users 1 `direccion`, 2 `marisol.garcia`, 3 `ana.torres` … 9 `maria.lopez`; daycare 1 = Cumbres; shifts 1 matutino / 2 vespertino. Ana works Monday–Thursday mornings.
+Without a local Python environment, in a throwaway container (the code is copied inside, so nothing is written to the repo):
+
+```bash
+docker run --rm -v "$PWD":/src:ro python:3.12-slim sh -c "
+  mkdir /work && cd /work &&
+  cp -r /src/app /src/tests /src/scripts /src/requirements.txt /src/requirements-dev.txt /src/pytest.ini . &&
+  pip install -q -r requirements-dev.txt pyflakes &&
+  python -m pytest -q &&
+  python -m pyflakes app scripts tests && echo 'pyflakes: clean'
+"
+```
+
+Seed accounts (password = `SEED_PASSWORD`, default `Cristal2026`): `ana.torres` (employee), `marisol.garcia` (manager of Cumbres), `direccion` (director). Ids are random UUIDs, different in every database: look things up by name (daycare `Cumbres`, shifts `matutino`/`vespertino`) or username (`direccion`, `marisol.garcia`, `ana.torres` … `maria.lopez`, all in Cumbres). Ana works Monday–Thursday mornings. The seed finds everything by name, so it never depended on ids.
 
 **Seed is intentionally kept in the production image** (the user decided: it is for demo users on a VM). Advice already given: set a private `SEED_PASSWORD` in the VM's `.env`, `ENVIRONMENT=production`, own `JWT_SECRET`/`METRICS_TOKEN`, real `TRUSTED_PROXIES`, do not expose port 8000. `seed.py` also resets passwords/reactivates its accounts when re-run.
 
 **Full stack (infra folder):** `cd ..\sonrisas_cristal_infra; docker compose up -d --build`; demo data: `docker compose exec api python -m scripts.seed`; stop with `docker compose down` (**never `-v` without asking**: it deletes the DB volume). Check `http://localhost:9090/targets` (all UP) and Grafana at `:3000`.
 
-**Real-PostgreSQL end-to-end check (44 checks)** — how it was run (written before the infra compose existed; adapt names): rebuild the DB (`docker compose down -v; docker compose up -d --build`; the user explicitly authorized this once because that DB has no data), then run a throwaway `python:3.12-slim` container **on the compose network (`sonrisas_sonrisas_net` now)** with the project mounted read-only: copy `app scripts tests requirements*.txt` into `/app`, `pip install -r requirements-dev.txt`, set `DATABASE_URL` (api_user, host `postgres`, password percent-encoded), `JWT_SECRET`, `METRICS_TOKEN`, then `python -m pytest tests`, `python -m scripts.seed`, `python -m tests.e2e_postgres`. `api_user` cannot delete, so **the e2e is not repeatable on the same data: rebuild the DB between runs.** Filter output so the password never appears. The e2e covers: audit authors via `set_config`, CHECK/UNIQUE constraints, UTC timestamps, token invalidation on termination, transfer scoping, `/metrics` pool gauge.
+**Real-PostgreSQL end-to-end check (42 checks, all passing with UUID ids).** Simplest way: the same throwaway-container command as the tests, plus `--network <the network of postgres>`, copying `.env` into `/work` too (pydantic-settings reads it, so no secret goes on the command line; the file must be valid for python-dotenv: `KEY=value`, no spaces, balanced quotes) and running `python -m scripts.seed && python -m tests.e2e_postgres`, piping the output through `sed -E 's#(://[^:/]+:)[^@]+@#\1****@#g'` to mask a password if an error prints the URL. The e2e uses **yesterday** as its test day (clock-ins older than 48 h are rejected) and first gives Ana a 7-day schedule from that day; `/statistics` periods must be ≤ 92 days. Older notes on how it was run (written before the infra compose existed; adapt names): rebuild the DB (`docker compose down -v; docker compose up -d --build`; the user explicitly authorized this once because that DB has no data), then run a throwaway `python:3.12-slim` container **on the compose network (`sonrisas_sonrisas_net` now)** with the project mounted read-only: copy `app scripts tests requirements*.txt` into `/app`, `pip install -r requirements-dev.txt`, set `DATABASE_URL` (api_user, host `postgres`, password percent-encoded), `JWT_SECRET`, `METRICS_TOKEN`, then `python -m pytest tests`, `python -m scripts.seed`, `python -m tests.e2e_postgres`. `api_user` cannot delete, so **the e2e is not repeatable on the same data: rebuild the DB between runs.** Filter output so the password never appears. The e2e covers: audit authors via `set_config`, CHECK/UNIQUE constraints, UTC timestamps, token invalidation on termination, transfer scoping, `/metrics` pool gauge.
 
 Docker: building/running the image was verified (healthy, non-root, no `/docs` in production). Do not run `docker compose up` in this repo (old split setup, container name `sonrisas_api`, port 8000 conflicts with the infra stack).
 
@@ -252,7 +268,9 @@ Docker: building/running the image was verified (healthy, non-root, no `/docs` i
 - slowapi: decorated routes need a `request: Request` parameter; `limiter.reset()`; tests disable it with `limiter.enabled = False` (the `fresh_database` fixture) and enable it per test. Use different usernames per attempt in rate-limit tests or the account lockout (10 failures) interferes.
 - Tests that need a specific peer IP: `TestClient(app, client=("10.1.2.3", 5000))`.
 - SQLAlchemy: `expire_on_commit=False`; after a commit set relationships manually or `db.refresh(obj)` (e.g. when a FK changed). `selectinload(User.schedules.and_(...))` fills the collection with a **filtered** list in the identity map (used in `load_data` and the schedules list); do not expect full collections from those User objects in the same session.
-- `models.py` `UTCDateTime` returns aware UTC datetimes on PostgreSQL and SQLite; `BigId` is `BigInteger` with an `Integer` variant for SQLite autoincrement.
+- `models.py` `UTCDateTime` returns aware UTC datetimes on PostgreSQL and SQLite. Keys use `_uuid_pk()` (Python-side `uuid4`); `BigId` no longer exists.
+- Tests and UUIDs: `world` (factories) returns every id **as text**, ready for a URL, a JSON body or a comparison with a response; convert with `uuid.UUID(...)` only for `db.get(...)`. "An id that does not exist" is `missing_id()` (a valid random UUID), never a number (a number is now a 400). Security events and request-log lines are collected through `as_logged()` (conftest), which turns UUIDs into text like the real JSON log.
+- `json.dumps` cannot write a UUID: anything built by hand (log fields, error extras) goes through `default=str` / `jsonable_encoder`.
 - Tests run on SQLite, so triggers, CHECK constraints and `set_config` are **not** exercised there. Anything touching them needs the real-PostgreSQL e2e.
 - `security.BCRYPT_ROUNDS = 4` in tests only (module global read at call time).
 - Reading a request body field that was sent as `null` vs omitted: use `body.model_fields_set` (see `clock_out_at` in time-records).

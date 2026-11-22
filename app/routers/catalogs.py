@@ -1,5 +1,7 @@
 """/catalogs: roles, positions, shifts, termination reasons and absence reasons."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
@@ -20,18 +22,19 @@ from app.schemas import (
 router = APIRouter(prefix="/catalogs", tags=["Catalogs"], dependencies=[Depends(get_current_user)])
 
 
-def _all(db, model):
-    return db.scalars(select(model).order_by(model.id)).all()
+def _all(db, model, order):
+    """Every row, in a stable order (ids are random UUIDs, so they cannot be the order)."""
+    return db.scalars(select(model).order_by(order)).all()
 
 
 @router.get("", response_model=CatalogsOut)
 def get_catalogs(db: DbSession):
     return {
-        "roles": _all(db, Role),
-        "positions": _all(db, Position),
-        "shifts": _all(db, Shift),
-        "termination_reasons": _all(db, TerminationReason),
-        "absence_reasons": _all(db, AbsenceReason),
+        "roles": _all(db, Role, Role.name),
+        "positions": _all(db, Position, Position.name),
+        "shifts": _all(db, Shift, Shift.start_time),  # morning before afternoon
+        "termination_reasons": _all(db, TerminationReason, TerminationReason.name),
+        "absence_reasons": _all(db, AbsenceReason, AbsenceReason.description),
     }
 
 
@@ -61,7 +64,7 @@ def create_termination_reason(body: NameIn, user: CurrentUser, db: DbSession):
 
 
 @router.put("/shifts/{shift_id}", response_model=ShiftOut)
-def update_shift(shift_id: int, body: ShiftUpdateIn, user: CurrentUser, db: DbSession):
+def update_shift(shift_id: UUID, body: ShiftUpdateIn, user: CurrentUser, db: DbSession):
     shift = require_found(db.get(Shift, shift_id))
     if body.name is not None:
         shift.name = body.name

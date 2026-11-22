@@ -2,6 +2,7 @@
 
 from datetime import date
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -25,8 +26,8 @@ def list_changes(
     start_date: date | None = Query(None, alias="startDate", description="Default: Monday of this week"),
     end_date: date | None = Query(None, alias="endDate", description="Default: today"),
     table: Literal["registro_entradas", "asistencia"] | None = None,
-    record_id: int | None = Query(None, alias="recordId"),
-    user_id: int | None = Query(None, alias="userId"),
+    record_id: UUID | None = Query(None, alias="recordId"),
+    user_id: UUID | None = Query(None, alias="userId"),
 ):
     """The last 500 changes of the period, newest first."""
     start, end = read_period(start_date, end_date)
@@ -34,7 +35,7 @@ def list_changes(
         select(AuditLog)
         .where(AuditLog.created_at >= day_start(start), AuditLog.created_at <= day_end(end))
         .options(joinedload(AuditLog.user))
-        .order_by(AuditLog.id.desc())
+        .order_by(AuditLog.created_at.desc())  # ids are random UUIDs: the time is the order
         .limit(500)
     )
     if table:

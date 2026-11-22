@@ -19,15 +19,11 @@ from app.main import app
 from app.security import limiter
 from app.timeutils import today
 
-def _last_workday():
-    """The most recent day before today that Ana Torres works in the seed (Monday to Thursday)."""
-    day = today() - timedelta(days=1)
-    while day.weekday() > 3:
-        day -= timedelta(days=1)
-    return day
-
-
-DAY = str(_last_workday())
+# Always yesterday: a clock-in sent later cannot be more than 48 hours old (MAX_CLIENT_TIMESTAMP_AGE_HOURS),
+# so "the last day Ana works in the seed" (Monday to Thursday) failed on Saturdays, Sundays and Mondays.
+# Ana gets a schedule that covers yesterday before clocking in (see "Schedule for the test day").
+DAY = str(today() - timedelta(days=1))
+WEEK = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
 def main() -> int:
@@ -58,9 +54,23 @@ def main() -> int:
         check("catalogs: roles in English", sorted(r["name"] for r in catalogs["roles"]) == ["director", "employee", "manager"])
         check("catalogs: shifts as HH:MM", [(s["startTime"], s["endTime"]) for s in catalogs["shifts"]] == [("07:00", "15:00"), ("12:00", "20:00")])
         daycares = client.get("/daycares", headers=ana).json()
+        # by name, not by position: the list is sorted by name (ids are random UUIDs)
+        cumbres = next(d for d in daycares if d["name"] == "Cumbres")
+        other_daycare = next(d for d in daycares if d["name"] != "Cumbres")
         check("daycares: 5 with rooms and location", len(daycares) == 5 and all(len(d["rooms"]) == 4 and d["location"] for d in daycares))
         check("manager only sees her daycare", {p["daycare"]["name"] for p in client.get("/staff", headers=marisol).json()} == {"Cumbres"})
         check("staff: 9 people for the director", len(client.get("/staff", headers=director).json()) == 9)
+
+        # ── Schedule for the test day ───────────────────────────────────
+        # Morning shift every day from yesterday, so yesterday is a work day whatever weekday it was.
+        # It also replaces the seed schedule: the newest one (creado_en) must win on that day.
+        morning = next(s["id"] for s in catalogs["shifts"] if s["name"] == "matutino")
+        maternal_a = next(r["id"] for r in cumbres["rooms"] if r["name"] == "Maternal A")
+        week = [{"day": day, "shiftId": morning, "roomId": maternal_a} for day in WEEK]
+        ana_schedule = client.put(f"/schedules/{ana_id}", headers=marisol, json={"validFrom": DAY, "days": week})
+        check("schedule for the test day: 201", ana_schedule.status_code == 201, ana_schedule.text[:200])
+        mine = client.get(f"/schedules/me?date={DAY}", headers=ana).json()
+        check("the new schedule is the one in force", mine is not None and len(mine["days"]) == 7, str(mine)[:200])
 
         # ── Clock-in with the audit author ──────────────────────────────
         key = "5f1c3d2a-7b1e-4c55-9a77-0a1b2c3d4e5f"
@@ -70,6 +80,10 @@ def main() -> int:
             json={"uuid": key, "occurredAt": f"{DAY}T07:20:00", "latitude": 25.7447, "longitude": -100.4036},
         )
         check("clock-in 201", first.status_code == 201, first.text[:200])
+        if first.status_code != 201:
+            # everything below uses this record: report what we have instead of crashing
+            print(f"\n{sum(ok for _, ok, _ in results)}/{len(results)} checks passed (stopped: the clock-in failed)")
+            return 1
         body = first.json()
         check("clock-in: late (20 min)", body["attendance"]["status"] == "late")
         check("clock-in: within zone by GPS", body["record"]["withinZone"] is True)
@@ -110,7 +124,9 @@ def main() -> int:
 
         # ── Reports on real data ────────────────────────────────────────
         report = client.get(f"/attendance/me?startDate={DAY}&endDate={DAY}", headers=ana).json()
-        check("attendance/me", report["days"][0]["clockIn"] == "07:00" and report["days"][0]["status"] in ("late", "present"), str(report["days"][0]))
+        # arrived 07:20 (20 min late); the manager fixed only the clock-out, to 14:30
+        day = report["days"][0]
+        check("attendance/me", (day["clockIn"], day["clockOut"], day["status"]) == ("07:20", "14:30", "late"), str(day))
         listing = client.get(f"/attendance?startDate={DAY}&endDate={DAY}", headers=marisol).json()
         lucia = next(row for row in listing if row["person"]["id"] == lucia_id)
         check("attendance report shows the absence with its reason", lucia["days"][0]["status"] == "absent" and lucia["days"][0]["reason"] == "enfermedad")
@@ -118,14 +134,15 @@ def main() -> int:
         check("coverage", coverage["daycare"]["name"] == "Cumbres" and len(coverage["rooms"]) == 4)
         summary = client.get(f"/summary?date={DAY}", headers=director).json()
         check("summary: 5 daycares", summary["completeCount"] + summary["understaffedCount"] == 5)
-        stats = client.get("/statistics?startDate=2025-01-01&endDate=2025-12-31", headers=director).json()
+        # /statistics allows at most 92 days; the seed hires are on 2025-01-12
+        stats = client.get("/statistics?startDate=2025-01-01&endDate=2025-03-31", headers=director).json()
         check("statistics: hires from the seed", stats["hires"] >= 9 and len(stats["byDaycare"]) == 5)
         csv = client.get(f"/export/attendance?startDate={DAY}&endDate={DAY}", headers=marisol)
         check("csv export", csv.status_code == 200 and "Ana Torres" in csv.content.decode("utf-8-sig"))
         movements = client.get("/movements?startDate=2025-01-01&endDate=2025-12-31", headers=director).json()
         check("movements: hires from the seed", len(movements) >= 9 and all(m["type"] == "hire" for m in movements))
 
-        # ── Notices, schedules, hire (INSERT ... with IDENTITY ids) ─────
+        # ── Notices, schedules, hire (INSERT ... with UUID ids) ─────
         inbox = client.get("/notices/inbox", headers=ana).json()
         check("notices: seed notice in the inbox", len(inbox) == 1 and inbox[0]["read"] is False)
         read = client.post(f"/notices/{inbox[0]['id']}/read", headers=ana)
@@ -138,7 +155,7 @@ def main() -> int:
         duplicate = client.post("/staff", headers=marisol, json={"name": "Otra", "username": "prueba.e2e", "email": "otra@sonrisascristal.mx", "phone": "81", "positionId": position})
         check("duplicate username: 409 (UNIQUE constraint)", duplicate.status_code == 409, duplicate.text[:200])
         new_id = hired.json()["id"]
-        schedule = client.put(f"/schedules/{new_id}", headers=marisol, json={"validFrom": str(today()), "days": [{"day": "monday", "shiftId": catalogs["shifts"][0]["id"], "roomId": daycares[0]["rooms"][0]["id"]}]})
+        schedule = client.put(f"/schedules/{new_id}", headers=marisol, json={"validFrom": str(today()), "days": [{"day": "monday", "shiftId": catalogs["shifts"][0]["id"], "roomId": cumbres["rooms"][0]["id"]}]})
         check("schedule replaced", schedule.status_code == 201, schedule.text[:200])
 
         # ── A01 on the real database: a token never goes stale ──────────
@@ -149,7 +166,7 @@ def main() -> int:
         done = client.post(f"/staff/{new_id}/terminate", headers=marisol, json={"terminationReasonId": reason})
         check("terminate (movement CHECK constraints)", done.status_code == 200, done.text[:200])
         check("terminated person's token stops working at once", client.get("/profile", headers=new_headers).status_code == 401)
-        transfer = client.post(f"/staff/{lucia_id}/transfer", headers=director, json={"daycareId": daycares[1]["id"]})
+        transfer = client.post(f"/staff/{lucia_id}/transfer", headers=director, json={"daycareId": other_daycare["id"]})
         check("transfer (movement CHECK constraints)", transfer.status_code == 200, transfer.text[:200])
         check("transferred person leaves the old manager's view", client.get(f"/staff/{lucia_id}", headers=marisol).status_code == 404)
 

@@ -82,12 +82,12 @@ ALGORITHM = "HS256"  # fixed on purpose: never let the token choose its own algo
 
 @dataclass(frozen=True)
 class TokenData:
-    user_id: int
+    user_id: uuid.UUID
     jti: str  # unique id of this token: what POST /logout revokes
     expires_at: datetime
 
 
-def create_access_token(user_id: int) -> tuple[str, int]:
+def create_access_token(user_id: uuid.UUID) -> tuple[str, int]:
     """Returns the token and the seconds it lasts."""
     now = datetime.now(timezone.utc)
     lifetime = timedelta(minutes=settings.jwt_expire_minutes)
@@ -102,8 +102,8 @@ def read_access_token(token: str) -> TokenData:
     )
     jti = payload["jti"]
     try:
-        user_id = int(payload["sub"])
-    except (TypeError, ValueError) as error:
+        user_id = uuid.UUID(payload["sub"])  # an old numeric "sub" (or any non-UUID) is an invalid token: 401
+    except (AttributeError, TypeError, ValueError) as error:
         raise jwt.InvalidTokenError("Invalid subject") from error
     if not isinstance(jti, str) or not jti:
         raise jwt.InvalidTokenError("Invalid token id")

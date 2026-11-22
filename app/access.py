@@ -5,11 +5,13 @@ When something belongs to another daycare the API answers 404 (not 403): it does
 confirm that the id exists.
 """
 
+from uuid import UUID
+
 from app.errors import ApiError
 from app.models import User
 
 
-def daycare_scope(user: User, requested_id: int | None = None) -> int | None:
+def daycare_scope(user: User, requested_id: UUID | None = None) -> UUID | None:
     """The daycare id to filter by, or None for "all of them" (directors only).
 
     A director may ask for one with ?daycareId=. Everyone else is always pinned to their own.
@@ -19,11 +21,11 @@ def daycare_scope(user: User, requested_id: int | None = None) -> int | None:
     return user.daycare_id
 
 
-def can_access_daycare(user: User, daycare_id: int | None) -> bool:
+def can_access_daycare(user: User, daycare_id: UUID | None) -> bool:
     return user.role_code == "director" or daycare_id == user.daycare_id
 
 
-def require_daycare_access(user: User, daycare_id: int | None, what: str = "Not found") -> None:
+def require_daycare_access(user: User, daycare_id: UUID | None, what: str = "Not found") -> None:
     if not can_access_daycare(user, daycare_id):
         raise ApiError(404, what)
 

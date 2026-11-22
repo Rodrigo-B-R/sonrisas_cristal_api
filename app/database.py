@@ -1,6 +1,7 @@
 """SQLAlchemy engine, session and base class."""
 
 from collections.abc import Iterator
+from uuid import UUID
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -26,7 +27,7 @@ def get_db() -> Iterator[Session]:
         yield db
 
 
-def set_audit_user(db: Session, user_id: int) -> None:
+def set_audit_user(db: Session, user_id: UUID) -> None:
     """Tell the database triggers who is making the change.
 
     Call it before writing to registro_entradas or asistencia, and commit
@@ -34,4 +35,5 @@ def set_audit_user(db: Session, user_id: int) -> None:
     """
     if db.get_bind().dialect.name != "postgresql":
         return
+    # Sent as text; the trigger casts it back with ::UUID
     db.execute(text("SELECT set_config('app.id_usuario', :user_id, true)"), {"user_id": str(user_id)})

@@ -5,6 +5,7 @@ from fastapi.routing import APIRoute
 from app.authz import enforcer, is_allowed
 from app.main import app
 from tests.conftest import PASSWORD
+from tests.factories import missing_id
 
 PUBLIC = {("/", "GET"), ("/login", "POST"), ("/metrics", "GET")}  # no session needed: not in the policy
 ROLES = ("employee", "manager", "director")
@@ -60,10 +61,11 @@ def test_what_is_not_listed_is_denied():
 
 
 def test_the_route_decides_not_the_url_text(client, login):
-    """The check uses the route template, so /staff/1 and /staff/2 follow the same rule."""
+    """The check uses the route template, so any two ids follow the same rule."""
     employee = login("employee_a")
-    assert client.get("/staff/1", headers=employee).status_code == 403
-    assert client.get("/staff/999999", headers=employee).status_code == 403  # 403, not 404: the role is checked first
+    assert client.get(f"/staff/{missing_id()}", headers=employee).status_code == 403
+    assert client.get(f"/staff/{missing_id()}", headers=employee).status_code == 403  # 403, not 404: the role is checked first
+    assert client.get("/staff/not-a-uuid", headers=employee).status_code == 403  # 403, not 400: the role goes before the id
 
 
 def test_role_checked_after_token(client):

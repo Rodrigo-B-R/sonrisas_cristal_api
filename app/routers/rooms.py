@@ -1,6 +1,8 @@
 """/rooms: the manager administers the rooms of their daycare. There is no DELETE:
 the database user of the API is not allowed to delete."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
@@ -16,9 +18,9 @@ router = APIRouter(prefix="/rooms", tags=["Rooms"], dependencies=[Depends(get_cu
 def list_rooms(
     user: CurrentUser,
     db: DbSession,
-    daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
+    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
 ):
-    stmt = select(Room).order_by(Room.id)
+    stmt = select(Room).order_by(Room.name)
     scope = daycare_scope(user, daycare_id)
     if scope is not None:
         stmt = stmt.where(Room.daycare_id == scope)
@@ -26,7 +28,7 @@ def list_rooms(
 
 
 @router.get("/{room_id}", response_model=RoomOut)
-def get_room(room_id: int, user: CurrentUser, db: DbSession):
+def get_room(room_id: UUID, user: CurrentUser, db: DbSession):
     room = require_found(db.get(Room, room_id), "Room not found")
     require_daycare_access(user, room.daycare_id, "Room not found")
     return room
@@ -41,7 +43,7 @@ def create_room(body: RoomIn, user: CurrentUser, db: DbSession):
 
 
 @router.put("/{room_id}", response_model=RoomOut)
-def update_room(room_id: int, body: RoomUpdateIn, user: CurrentUser, db: DbSession):
+def update_room(room_id: UUID, body: RoomUpdateIn, user: CurrentUser, db: DbSession):
     room = require_found(db.get(Room, room_id), "Room not found")
     require_daycare_access(user, room.daycare_id, "Room not found")
     if body.name is not None:

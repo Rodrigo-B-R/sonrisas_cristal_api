@@ -4,6 +4,8 @@ A director can write to one daycare or send a general notice (no daycare) to all
 Everyone reads what reached them in /notices/inbox and confirms with POST /notices/{id}/read.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import joinedload
@@ -25,7 +27,7 @@ from app.timeutils import now_utc, today
 router = APIRouter(prefix="/notices", tags=["Notices"], dependencies=[Depends(get_current_user)])
 
 
-def _visible_to(user: User, daycare_id: int | None = None) -> list:
+def _visible_to(user: User, daycare_id: UUID | None = None) -> list:
     """Notices a manager can see: their daycare's and the general ones. A director: all, or one daycare's."""
     if user.role_code == "director":
         return [Notice.daycare_id == daycare_id] if daycare_id is not None else []
@@ -57,15 +59,16 @@ def inbox(user: CurrentUser, db: DbSession):
     """The notices that reached me, with whether I read them."""
     receipts = db.scalars(
         select(NoticeRecipient)
+        .join(Notice, Notice.id == NoticeRecipient.notice_id)  # only to sort by the notice's time
         .where(NoticeRecipient.user_id == user.id)
         .options(joinedload(NoticeRecipient.notice).joinedload(Notice.author))
-        .order_by(NoticeRecipient.notice_id.desc())
+        .order_by(Notice.created_at.desc())
     ).all()
     return [_inbox_item(receipt) for receipt in receipts]
 
 
 @router.get("/inbox/{notice_id}", response_model=EmployeeNoticeOut)
-def inbox_item(notice_id: int, user: CurrentUser, db: DbSession):
+def inbox_item(notice_id: UUID, user: CurrentUser, db: DbSession):
     receipt = db.scalars(
         select(NoticeRecipient)
         .where(NoticeRecipient.notice_id == notice_id, NoticeRecipient.user_id == user.id)
@@ -77,7 +80,7 @@ def inbox_item(notice_id: int, user: CurrentUser, db: DbSession):
 
 
 @router.post("/{notice_id}/read", response_model=ReadReceiptOut)
-def confirm_read(notice_id: int, user: CurrentUser, db: DbSession):
+def confirm_read(notice_id: UUID, user: CurrentUser, db: DbSession):
     """I confirm I read it. If I already had, the first time stays."""
     receipt = db.get(NoticeRecipient, (notice_id, user.id))
     if receipt is None:
@@ -91,7 +94,7 @@ def confirm_read(notice_id: int, user: CurrentUser, db: DbSession):
 # ── Manager and director ─────────────────────────────────────────────
 
 
-def _counts(db, user: User, notice_ids: list[int]) -> dict[int, tuple[int, int]]:
+def _counts(db, user: User, notice_ids: list[UUID]) -> dict[UUID, tuple[int, int]]:
     """notice id -> (recipients, confirmed): the "9 of 14 confirmed" of the list."""
     if not notice_ids:
         return {}
@@ -120,10 +123,10 @@ def _manager_item(notice: Notice, counts: tuple[int, int], mine: NoticeRecipient
 def list_notices(
     user: CurrentUser,
     db: DbSession,
-    daycare_id: int | None = Query(None, alias="daycareId", description="Directors only"),
+    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
 ):
     notices = db.scalars(
-        select(Notice).where(*_visible_to(user, daycare_id)).options(joinedload(Notice.author)).order_by(Notice.id.desc())
+        select(Notice).where(*_visible_to(user, daycare_id)).options(joinedload(Notice.author)).order_by(Notice.created_at.desc())
     ).all()
     ids = [notice.id for notice in notices]
     counts = _counts(db, user, ids)
@@ -137,7 +140,7 @@ def list_notices(
 
 
 @router.get("/{notice_id}", response_model=NoticeDetailOut)
-def get_notice(notice_id: int, user: CurrentUser, db: DbSession):
+def get_notice(notice_id: UUID, user: CurrentUser, db: DbSession):
     """The notice with who confirmed and who is pending (the "reading status" screen)."""
     notice = db.scalars(
         select(Notice).where(Notice.id == notice_id).options(joinedload(Notice.author))

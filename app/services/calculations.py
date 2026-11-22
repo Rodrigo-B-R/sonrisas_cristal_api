@@ -13,6 +13,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
+from uuid import UUID
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -241,25 +242,25 @@ def compute_coverage(daycare: Daycare, shifts: list[Shift], day: date, data: Per
     }
 
 
-def _find_row(rooms: list[dict], room_id: int, shift_id: int) -> dict | None:
+def _find_row(rooms: list[dict], room_id: UUID, shift_id: UUID) -> dict | None:
     for room in rooms:
         if room["room"]["id"] == room_id:
             return next((row for row in room["shifts"] if row["shift_id"] == shift_id), None)
     return None
 
 
-def load_daycares(db: Session, daycare_id: int | None = None) -> list[Daycare]:
-    stmt = select(Daycare).options(selectinload(Daycare.rooms)).order_by(Daycare.id)
+def load_daycares(db: Session, daycare_id: UUID | None = None) -> list[Daycare]:
+    stmt = select(Daycare).options(selectinload(Daycare.rooms)).order_by(Daycare.name)
     if daycare_id is not None:
         stmt = stmt.where(Daycare.id == daycare_id)
     return list(db.scalars(stmt).all())
 
 
 def ordered_shifts(db: Session) -> list[Shift]:
-    return list(db.scalars(select(Shift).order_by(Shift.id)).all())
+    return list(db.scalars(select(Shift).order_by(Shift.start_time)).all())
 
 
-def build_statistics(db: Session, daycare_id: int | None, start: date, end: date) -> dict:
+def build_statistics(db: Session, daycare_id: UUID | None, start: date, end: date) -> dict:
     """Hires, terminations, absences, lates and understaffed days for a period."""
     daycares = load_daycares(db, daycare_id)
     shifts = ordered_shifts(db)

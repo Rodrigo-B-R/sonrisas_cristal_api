@@ -1,6 +1,7 @@
 """One error format for the whole API: {"error": "message", ...extra details}."""
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
@@ -34,7 +35,9 @@ def common_headers(request_id: str | None = None) -> dict[str, str]:
 
 
 def error_response(status_code: int, message: str, headers: dict | None = None, **extra) -> JSONResponse:
-    return JSONResponse(status_code=status_code, content={"error": message, **extra}, headers=headers)
+    # jsonable_encoder: extra details may carry ids (UUIDs) or dates, which plain JSON cannot write
+    content = jsonable_encoder({"error": message, **extra})
+    return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
 def _client_ip(request: Request) -> str | None:

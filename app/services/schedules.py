@@ -1,6 +1,7 @@
 """Which schedule is valid on a day, and which shifts does a person have on it."""
 
 from datetime import date
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -16,9 +17,13 @@ def schedule_load_options():
 
 
 def current_schedule(schedules: list[Schedule], day: date) -> Schedule | None:
-    """The schedule that covers the day. If two do, the newest one (highest id) wins."""
+    """The schedule that covers the day. If two do, the one saved last wins.
+
+    Nothing can be deleted, so a schedule saved twice on the same day (or replacing one planned
+    for later) leaves both rows: only creado_en tells which one is the real one.
+    """
     valid = [item for item in schedules if item.valid_from <= day <= item.valid_until]
-    return max(valid, key=lambda item: item.id, default=None)
+    return max(valid, key=lambda item: item.created_at, default=None)
 
 
 def shifts_on(schedules: list[Schedule], day: date) -> list[ScheduleDay]:
@@ -30,7 +35,7 @@ def shifts_on(schedules: list[Schedule], day: date) -> list[ScheduleDay]:
     return [item for item in schedule.days if item.weekday == weekday]
 
 
-def schedule_of_user(db: Session, user_id: int, day: date) -> Schedule | None:
+def schedule_of_user(db: Session, user_id: UUID, day: date) -> Schedule | None:
     schedules = db.scalars(
         select(Schedule)
         .options(schedule_load_options())
@@ -39,7 +44,7 @@ def schedule_of_user(db: Session, user_id: int, day: date) -> Schedule | None:
     return current_schedule(list(schedules), day)
 
 
-def shifts_of_user_on(db: Session, user_id: int, day: date) -> list[ScheduleDay]:
+def shifts_of_user_on(db: Session, user_id: UUID, day: date) -> list[ScheduleDay]:
     schedule = schedule_of_user(db, user_id, day)
     if schedule is None:
         return []

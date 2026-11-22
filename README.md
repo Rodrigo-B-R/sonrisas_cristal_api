@@ -36,8 +36,9 @@ Todo pide `Authorization: Bearer <token>`, menos `/`, `/login` y `/metrics`.
 - Errores de validación: `400` con `{"error": "Invalid data", "details": [{"in", "field", "message"}]}`.
 - `/metrics` queda apagado si no hay `METRICS_TOKEN` (antes quedaba abierto).
 - Nuevo: `POST /logout` cierra la sesión (el token deja de servir de inmediato).
+- **Todos los ids son UUID** (por ejemplo `"id": "9f1c2b7e-4a3d-4c1e-..."`), no números consecutivos: no se pueden adivinar ni contar. Viajan como texto en el JSON. Un id mal formado (`/staff/3`) responde **400**; uno válido que no existe, **404**. Las listas que muestran "lo más nuevo primero" (avisos, movimientos, auditoría) se ordenan por la hora en que se guardaron (`createdAt`), no por id.
 
-La documentación interactiva está en **`/docs`** y **`/redoc`** (solo con `ENVIRONMENT=development`). Hay ejemplos listos en `pruebas.http`.
+La documentación interactiva está en **`/docs`** y **`/redoc`** (solo con `ENVIRONMENT=development`). Hay ejemplos listos en `pruebas.http`: como los ids cambian en cada base, primero corre los tres logins y luego las peticiones de "Look up the ids"; las demás toman los ids de esas respuestas.
 
 ## Cómo prenderla
 
@@ -108,7 +109,19 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Son ~100 pruebas sobre SQLite (no necesitan PostgreSQL): roles, aislamiento entre daycares, tokens, rate limit, bloqueo de cuenta, logging, checadas, avisos y reportes.
+Son 122 pruebas sobre SQLite (no necesitan PostgreSQL): roles, aislamiento entre daycares, tokens, rate limit, bloqueo de cuenta, logging, checadas, avisos y reportes.
+
+Sin instalar Python, en un contenedor que se borra al terminar (no escribe nada en el repo):
+
+```bash
+docker run --rm -v "$PWD":/src:ro python:3.12-slim sh -c "
+  mkdir /work && cd /work &&
+  cp -r /src/app /src/tests /src/scripts /src/requirements.txt /src/requirements-dev.txt /src/pytest.ini . &&
+  pip install -q -r requirements-dev.txt pyflakes &&
+  python -m pytest -q &&
+  python -m pyflakes app scripts tests && echo 'pyflakes: limpio'
+"
+```
 
 Lo que SQLite no cubre (triggers de auditoría, restricciones `CHECK`, tipos de PostgreSQL, permisos de `api_user`) lo revisa `tests/e2e_postgres.py` contra la base real, **con una base de desarrollo** (`api_user` no puede borrar, así que deja registros):
 
