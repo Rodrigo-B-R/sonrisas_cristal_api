@@ -1,23 +1,19 @@
 """/time-records: clock-ins and clock-outs. Each row is an entry; the exit is filled in on the same row."""
 
-from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.access import can_access_daycare, daycare_scope, require_found
 from app.constants import MAX_CLIENT_TIMESTAMP_AGE_HOURS
-from app.database import set_audit_user
 from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.errors import ApiError
-from app.models import Daycare, TimeRecord, User
-from app.schemas import BatchIn, BatchOut, ClockInIn, ClockInOut, ClockOutIn, ClockStatusOut, RecordFixIn, TimeRecordOut
+from app.models import Daycare, User
+from app.schemas import BatchIn, BatchOut, ClockInIn, ClockInOut, ClockOutIn, ClockStatusOut, TimeRecordOut
 from app.services import records as record_service
-from app.services.records import record_options
 from app.services.schedules import shifts_of_user_on
-from app.timeutils import day_end, day_start, read_period, read_timestamp, today
+from app.timeutils import read_timestamp, today
 
 router = APIRouter(prefix="/time-records", tags=["Time records"], dependencies=[Depends(get_current_user)])
 
@@ -37,37 +33,6 @@ def clock_status(user: CurrentUser, db: DbSession):
         "today_shifts": shifts_of_user_on(db, user.id, today()),
         "location": db.get(Daycare, user.daycare_id).location,
     }
-
-
-@router.get("", response_model=list[TimeRecordOut])
-def list_records(
-    user: CurrentUser,
-    db: DbSession,
-    start_date: date | None = Query(None, alias="startDate", description="Default: Monday of this week"),
-    end_date: date | None = Query(None, alias="endDate", description="Default: today"),
-    user_id: UUID | None = Query(None, alias="userId"),
-    within_zone: bool | None = Query(None, alias="withinZone"),
-    daycare_id: UUID | None = Query(None, alias="daycareId", description="Directors only"),
-):
-    """Employees see their own records, managers their daycare's, directors all (or one with daycareId)."""
-    start, end = read_period(start_date, end_date)
-    stmt = (
-        select(TimeRecord)
-        .where(TimeRecord.clock_in_at >= day_start(start), TimeRecord.clock_in_at <= day_end(end))
-        .options(*record_options())
-        .order_by(TimeRecord.clock_in_at.desc())
-    )
-    if user.role_code == "employee":
-        stmt = stmt.where(TimeRecord.user_id == user.id)
-    else:
-        scope = daycare_scope(user, daycare_id)
-        if scope is not None:
-            stmt = stmt.where(TimeRecord.user_id.in_(select(User.id).where(User.daycare_id == scope)))
-        if user_id is not None:
-            stmt = stmt.where(TimeRecord.user_id == user_id)
-    if within_zone is not None:
-        stmt = stmt.where(TimeRecord.within_zone.is_(within_zone))
-    return db.scalars(stmt).all()
 
 
 @router.post("/clock-in", response_model=ClockInOut, status_code=201)
@@ -141,25 +106,3 @@ def clock_in_batch(body: BatchIn, user: CurrentUser, db: DbSession):
         else:
             recorded.append(result.record)
     return {"recorded": recorded, "skipped": skipped}
-
-
-@router.put("/{record_id}", response_model=TimeRecordOut)
-def fix_record(record_id: UUID, body: RecordFixIn, user: CurrentUser, db: DbSession):
-    """The manager corrects a record directly. The before/after is kept by the audit triggers."""
-    record = db.scalars(select(TimeRecord).where(TimeRecord.id == record_id).options(*record_options())).first()
-    record = require_found(record)
-    if not can_access_daycare(user, record.user.daycare_id):
-        raise ApiError(404, "Not found")
-
-    clock_out_sent = "clock_out_at" in body.model_fields_set
-    proposed = record_service.propose_times(
-        record,
-        read_timestamp(body.clock_in_at) if body.clock_in_at is not None else None,
-        read_timestamp(body.clock_out_at) if body.clock_out_at is not None else None,
-        clock_out_sent,
-    )
-    set_audit_user(db, user.id)
-    record.clock_in_at = proposed.proposed_clock_in
-    record.clock_out_at = proposed.proposed_clock_out
-    db.commit()
-    return record

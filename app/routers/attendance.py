@@ -10,8 +10,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select
 
-from app.access import can_access_daycare, daycare_scope, require_found
-from app.constants import ATTENDANCE_FROM_DB, ATTENDANCE_TO_DB
+from app.access import can_access_daycare, daycare_scope
+from app.constants import ATTENDANCE_TO_DB
 from app.database import set_audit_user
 from app.dependencies import CurrentUser, DbSession, get_current_user
 from app.errors import ApiError
@@ -19,7 +19,6 @@ from app.models import AbsenceReason, Attendance, User
 from app.schemas import (
     AttendanceIn,
     AttendanceOut,
-    AttendanceUpdateIn,
     PersonAttendanceOut,
     SinglePersonAttendanceOut,
 )
@@ -133,22 +132,6 @@ def set_attendance(body: AttendanceIn, response: Response, user: CurrentUser, db
             daycare_id=person.daycare_id,
         )
         db.add(attendance)
-    db.commit()
-    db.refresh(attendance)
-    return attendance
-
-
-@router.put("/{attendance_id}", response_model=AttendanceOut)
-def fix_attendance(attendance_id: UUID, body: AttendanceUpdateIn, user: CurrentUser, db: DbSession):
-    attendance = require_found(db.get(Attendance, attendance_id))
-    if not can_access_daycare(user, attendance.daycare_id):
-        raise ApiError(404, "Not found")
-    status = body.status or ATTENDANCE_FROM_DB[attendance.status]
-    reason_id = _resolve_reason(db, status, body.absence_reason_id, body.absence_reason)
-    set_audit_user(db, user.id)
-    attendance.status = ATTENDANCE_TO_DB[status]
-    attendance.absence_reason_id = reason_id
-    attendance.recorded_by_id = user.id
     db.commit()
     db.refresh(attendance)
     return attendance

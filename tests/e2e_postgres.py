@@ -92,11 +92,6 @@ def main() -> int:
         check("same uuid: 200 and repeated", again.status_code == 200 and again.json()["repeated"] is True)
         out = client.post("/time-records/clock-out", headers=ana, json={"occurredAt": f"{DAY}T15:00:00"})
         check("clock-out", out.status_code == 200 and out.json()["clockOutAt"] == f"{DAY}T21:00:00.000Z", out.text[:200])
-        record_id = body["record"]["id"]
-
-        # ── Manager fix ─────────────────────────────────────────────────
-        direct = client.put(f"/time-records/{record_id}", headers=marisol, json={"clockOutAt": f"{DAY}T14:30:00"})
-        check("manager fixes a record directly", direct.status_code == 200, direct.text[:200])
 
         # ── Attendance (CHECK constraint: absent needs a reason) ────────
         no_reason = client.post("/attendance", headers=marisol, json={"userId": lucia_id, "date": DAY, "status": "absent"})
@@ -116,7 +111,7 @@ def main() -> int:
             return {e["userId"] for e in by_table.get(table, []) if e["action"] == action}
 
         check("audit: clock-in written by ana", ana_id in authors("registro_entradas", "INSERT"))
-        check("audit: record updates written by ana and marisol", {ana_id, marisol_id} <= authors("registro_entradas", "UPDATE"))
+        check("audit: record updates written by ana", ana_id in authors("registro_entradas", "UPDATE"))
         check("audit: absence written by marisol", marisol_id in authors("asistencia", "INSERT"))
         previous = next(e for e in by_table["registro_entradas"] if e["action"] == "UPDATE")
         check("audit: keeps previous and new data", previous["previousData"] and previous["newData"])

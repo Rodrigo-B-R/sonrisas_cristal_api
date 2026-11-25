@@ -20,7 +20,6 @@ p, authenticated, /daycares/{daycare_id}, GET
 p, authenticated, /rooms, GET
 p, authenticated, /rooms/{room_id}, GET
 p, authenticated, /schedules/me, GET
-p, authenticated, /time-records, GET
 p, authenticated, /time-records/status, GET
 p, authenticated, /attendance/me, GET
 p, authenticated, /notices/inbox, GET
@@ -38,9 +37,7 @@ p, manager, /rooms, POST
 p, manager, /rooms/{room_id}, PUT
 p, manager, /schedules/{user_id}, PUT
 p, manager, /time-records/batch, POST
-p, manager, /time-records/{record_id}, PUT
 p, manager, /attendance, POST
-p, manager, /attendance/{attendance_id}, PUT
 
 # ── Manager and director ─────────────────────────────────────────────
 p, manager, /staff, GET
@@ -83,9 +80,5 @@ p, director, /export/attendance, GET
 # ── Director only ────────────────────────────────────────────────────
 p, director, /daycares, POST
 p, director, /daycares/{daycare_id}, PUT
-p, director, /catalogs/positions, POST
-p, director, /catalogs/termination-reasons, POST
-p, director, /catalogs/absence-reasons, POST
-p, director, /catalogs/shifts/{shift_id}, PUT
 p, director, /summary, GET
 p, director, /audit, GET

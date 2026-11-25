@@ -212,20 +212,6 @@ class CatalogsOut(Out):
     absence_reasons: list[AbsenceReasonOut]
 
 
-class NameIn(In):
-    name: Name
-
-
-class AbsenceReasonIn(In):
-    description: Name
-
-
-class ShiftUpdateIn(In):
-    name: Name | None = None
-    start_time: HHMM | None = None
-    end_time: HHMM | None = None
-
-
 # ── Daycares and rooms ───────────────────────────────────────────────
 
 Latitude = Annotated[float, Field(ge=-90, le=90)]
@@ -450,13 +436,6 @@ class BatchIn(In):
     shift_id: Id | None = None
 
 
-class RecordFixIn(In):
-    """The manager fixes a record directly. "clockOutAt": null removes the clock-out."""
-
-    clock_in_at: datetime | None = None
-    clock_out_at: datetime | None = None
-
-
 # ── Attendance ───────────────────────────────────────────────────────
 
 
@@ -466,12 +445,6 @@ class AttendanceIn(In):
     status: AttendanceStatus
     absence_reason_id: Id | None = None
     absence_reason: Name | None = None  # the description, as an alternative to the id
-
-
-class AttendanceUpdateIn(In):
-    status: AttendanceStatus | None = None
-    absence_reason_id: Id | None = None
-    absence_reason: Name | None = None
 
 
 class DayShiftOut(Out):

@@ -122,10 +122,6 @@ Content-Type: application/json
 
 { "occurredAt": "{{day}}T15:00:00" }
 
-### My records
-GET {{base}}/time-records?startDate={{day}}&endDate={{day}}
-Authorization: Bearer {{employee}}
-
 ### My attendance (summary and days)
 GET {{base}}/attendance/me?startDate=2026-11-02&endDate=2026-11-08
 Authorization: Bearer {{employee}}
@@ -235,17 +231,6 @@ Content-Type: application/json
 
 { "userIds": ["{{lucia}}", "{{carmen}}", "{{sofia}}"], "occurredAt": "{{day}}T07:00:00" }
 
-### Records of the daycare, only the ones outside the zone
-GET {{base}}/time-records?startDate={{day}}&endDate={{day}}&withinZone=false
-Authorization: Bearer {{manager}}
-
-### Fix Ana's clock-in directly. "clockOutAt": null removes the clock-out. (needs: clockIn)
-PUT {{base}}/time-records/{{clockIn.response.body.record.id}}
-Authorization: Bearer {{manager}}
-Content-Type: application/json
-
-{ "clockInAt": "{{day}}T07:00:00" }
-
 ### Attendance of the daycare in a period
 GET {{base}}/attendance?startDate=2026-11-02&endDate=2026-11-08
 Authorization: Bearer {{manager}}
@@ -261,13 +246,6 @@ Authorization: Bearer {{manager}}
 Content-Type: application/json
 
 { "userId": "{{lucia}}", "date": "{{day}}", "status": "absent", "absenceReason": "enfermedad" }
-
-### Correct that attendance row (needs: absence)
-PUT {{base}}/attendance/{{absence.response.body.id}}
-Authorization: Bearer {{manager}}
-Content-Type: application/json
-
-{ "status": "present" }
 
 ### Send a notice. target: all | shift (shiftId) | room (roomId) | people (userIds)
 POST {{base}}/notices
@@ -355,34 +333,6 @@ Authorization: Bearer {{director}}
 Content-Type: application/json
 
 { "radiusMeters": 200 }
-
-### New catalog entries
-POST {{base}}/catalogs/positions
-Authorization: Bearer {{director}}
-Content-Type: application/json
-
-{ "name": "Psicóloga" }
-
-###
-POST {{base}}/catalogs/termination-reasons
-Authorization: Bearer {{director}}
-Content-Type: application/json
-
-{ "name": "Jubilación" }
-
-###
-POST {{base}}/catalogs/absence-reasons
-Authorization: Bearer {{director}}
-Content-Type: application/json
-
-{ "description": "duelo" }
-
-### Change the hours of a shift
-PUT {{base}}/catalogs/shifts/{{evening}}
-Authorization: Bearer {{director}}
-Content-Type: application/json
-
-{ "startTime": "12:00", "endTime": "20:00" }
 
 ### Summary of every daycare on a date: which are complete and which are short
 GET {{base}}/summary?date={{day}}

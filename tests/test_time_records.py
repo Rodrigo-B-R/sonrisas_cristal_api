@@ -1,8 +1,12 @@
-"""Clock-in / clock-out, attendance and manager fixes."""
+"""Clock-in / clock-out and attendance."""
 
 import uuid
 from datetime import timedelta
 
+from sqlalchemy import func, select
+
+from app.database import SessionLocal
+from app.models import TimeRecord
 from app.timeutils import today
 from tests.factories import missing_id
 
@@ -54,8 +58,8 @@ def test_same_uuid_is_not_duplicated(client, login):
     assert second.status_code == 200
     assert second.json()["repeated"] is True
     assert second.json()["record"]["id"] == first.json()["record"]["id"]
-    listed = client.get(f"/time-records?startDate={DAY}&endDate={DAY}", headers=headers).json()
-    assert len(listed) == 1
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(TimeRecord)) == 1
 
 
 def test_uuid_of_another_person_is_a_conflict(client, login):
@@ -107,8 +111,6 @@ def test_position_decides_within_zone(client, login):
     far = clock_in(client, login("employee_b"), latitude=20.0, longitude=-100.4).json()["record"]
     assert near["withinZone"] is True
     assert far["withinZone"] is False  # saved anyway, for the manager to review
-    flagged = client.get(f"/time-records?startDate={DAY}&endDate={DAY}&withinZone=false", headers=login("manager_b")).json()
-    assert [item["id"] for item in flagged] == [far["id"]]
 
 
 def test_the_client_cannot_claim_to_be_within_the_zone(client, login):
@@ -272,20 +274,3 @@ def test_attendance_period_validations(client, login):
     assert client.get("/attendance?startDate=2026-02-01&endDate=2026-01-01", headers=headers).status_code == 400
     assert client.get("/attendance?startDate=2024-01-01&endDate=2026-01-01", headers=headers).status_code == 400
     assert client.get("/attendance?startDate=not-a-date", headers=headers).status_code == 400
-
-
-# ── Manager fixes ────────────────────────────────────────────────────
-
-
-def test_manager_fixes_a_record_directly(client, login):
-    employee, manager = login("employee_a"), login("manager_a")
-    record = clock_in(client, employee, time="07:30:00").json()["record"]
-    fixed = client.put(f"/time-records/{record['id']}", headers=manager, json={"clockInAt": f"{DAY}T07:00:00", "clockOutAt": f"{DAY}T15:00:00"})
-    assert fixed.status_code == 200, fixed.text
-    assert fixed.json()["clockInAt"] == f"{DAY}T13:00:00.000Z"
-    assert fixed.json()["clockOutAt"] == f"{DAY}T21:00:00.000Z"
-    # "clockOutAt": null removes the clock-out
-    cleared = client.put(f"/time-records/{record['id']}", headers=manager, json={"clockOutAt": None})
-    assert cleared.json()["clockOutAt"] is None
-    # Another daycare's manager cannot
-    assert client.put(f"/time-records/{record['id']}", headers=login("manager_b"), json={"clockOutAt": None}).status_code == 404

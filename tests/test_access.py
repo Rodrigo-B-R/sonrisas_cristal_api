@@ -17,7 +17,7 @@ def usernames(response):
 def test_every_route_needs_a_token(client, world):
     protected = [
         ("GET", "/catalogs"), ("GET", "/daycares"), ("GET", "/rooms"), ("GET", "/staff"), ("GET", "/movements"),
-        ("GET", "/schedules"), ("GET", "/time-records"), ("GET", "/attendance"),
+        ("GET", "/schedules"), ("GET", "/attendance"),
         ("GET", "/notices"), ("GET", "/audit"), ("GET", "/coverage"), ("GET", "/summary"),
         ("GET", "/statistics"), ("GET", "/export/attendance"), ("GET", "/profile"),
         ("POST", "/time-records/clock-in"), ("POST", "/staff"), ("PUT", "/profile/password"),
@@ -32,7 +32,7 @@ def test_employee_is_blocked_from_management_routes(client, login):
         ("GET", "/staff"), ("GET", "/movements"), ("GET", "/schedules"), ("GET", "/notices"), ("GET", "/audit"),
         ("GET", "/coverage"), ("GET", "/summary"), ("GET", "/statistics"), ("GET", "/export/attendance"),
         ("GET", "/attendance"), ("POST", "/staff"), ("POST", "/rooms"), ("POST", "/notices"),
-        ("POST", "/catalogs/positions"), ("POST", "/daycares"),
+        ("POST", "/daycares"),
     ]:
         response = client.request(method, path, headers=headers, json={} if method == "POST" else None)
         assert response.status_code == 403, (method, path, response.status_code)
@@ -43,7 +43,6 @@ def test_manager_cannot_use_director_routes(client, login):
     headers = login("manager_a")
     assert client.get("/audit", headers=headers).status_code == 403
     assert client.get("/summary", headers=headers).status_code == 403
-    assert client.post("/catalogs/positions", headers=headers, json={"name": "Cocina"}).status_code == 403
     assert client.post("/daycares", headers=headers, json={"name": "X", "latitude": 1, "longitude": 1}).status_code == 403
 
 
@@ -54,14 +53,23 @@ def test_director_cannot_use_manager_only_routes(client, login, world):
     assert client.post("/time-records/batch", headers=headers, json={"userIds": [missing_id()]}).status_code == 403
 
 
-def test_director_creates_catalog_entries(client, login):
-    headers = login("director")
-    created = client.post("/catalogs/positions", headers=headers, json={"name": "Cocina"})
-    assert created.status_code == 201
-    names = [item["name"] for item in client.get("/catalogs", headers=headers).json()["positions"]]
-    assert "Cocina" in names
-    duplicate = client.post("/catalogs/absence-reasons", headers=headers, json={"description": "enfermedad"})
-    assert duplicate.status_code == 409
+def test_endpoints_the_app_does_not_use_were_removed(client, login):
+    """Closed on purpose (smaller attack surface): no role can reach them, not even the director."""
+    some_id = missing_id()
+    removed = [
+        ("GET", "/time-records"),
+        ("PUT", f"/time-records/{some_id}"),
+        ("PUT", f"/attendance/{some_id}"),
+        ("POST", "/catalogs/positions"),
+        ("POST", "/catalogs/termination-reasons"),
+        ("POST", "/catalogs/absence-reasons"),
+        ("PUT", f"/catalogs/shifts/{some_id}"),
+    ]
+    for who in ("employee_a", "manager_a", "director"):
+        headers = login(who)
+        for method, path in removed:
+            response = client.request(method, path, headers=headers, json=None if method == "GET" else {})
+            assert response.status_code in (403, 404, 405), (who, method, path, response.status_code)
 
 
 def test_catalogs_use_english_role_names(client, login):
@@ -155,11 +163,10 @@ def test_records_of_other_daycares_are_not_listed(client, login, world):
     for who in ("employee_a", "employee_b"):
         r = client.post("/time-records/clock-in", headers=login(who), json={"occurredAt": f"{day}T07:00:00"})
         assert r.status_code == 201, r.text
-    listed = client.get(f"/time-records?startDate={day}&endDate={day}", headers=login("manager_a")).json()
-    assert {item["user"]["id"] for item in listed} == {world["ids"]["employee_a"]}
-    # employees only see their own
-    mine = client.get(f"/time-records?startDate={day}&endDate={day}", headers=login("employee_b")).json()
-    assert {item["user"]["id"] for item in mine} == {world["ids"]["employee_b"]}
+    listed = client.get(f"/attendance?startDate={day}&endDate={day}", headers=login("manager_a")).json()
+    people = {item["person"]["id"] for item in listed}
+    assert world["ids"]["employee_a"] in people
+    assert world["ids"]["employee_b"] not in people
 
 
 def test_notices_are_scoped(client, login, world):

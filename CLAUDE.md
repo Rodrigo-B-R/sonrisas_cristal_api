@@ -66,7 +66,7 @@ app/
   timeutils.py       TZ helpers, read_period, read_timestamp
   routers/           session, catalogs, daycares, rooms, staff, movements, schedules, time_records,
                      attendance, notices, audit, reports
-  services/          schedules.py, records.py (clock-in/out, manager fixes), calculations.py (attendance/coverage/statistics)
+  services/          schedules.py, records.py (clock-in/out), calculations.py (attendance/coverage/statistics)
 scripts/             create_tables.py, seed.py
 tests/               conftest.py, factories.py, test_*.py (SQLite), e2e_postgres.py (real PostgreSQL, not collected by pytest)
 requirements.txt / requirements-dev.txt / pytest.ini / Dockerfile / docker-compose.yml / .env.example
@@ -100,10 +100,8 @@ Query periods use `?startDate=&endDate=` (YYYY-MM-DD). Directors can filter with
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/catalogs` | Any | roles (English names), positions, shifts, terminationReasons, absenceReasons |
-| POST | `/catalogs/positions` | D | `{name}` → 201 |
-| POST | `/catalogs/termination-reasons` | D | `{name}` → 201 |
-| POST | `/catalogs/absence-reasons` | D | `{description}` → 201, 409 if repeated |
-| PUT | `/catalogs/shifts/{id}` | D | `{name?, startTime?, endTime?}` ("HH:MM") |
+
+Removed in v3 because the app did not use them (smaller attack surface): `GET /time-records`, `PUT /time-records/{id}`, `PUT /attendance/{id}` and the catalog writes (`POST /catalogs/positions|termination-reasons|absence-reasons`, `PUT /catalogs/shifts/{id}`). Catalogs are filled by `scripts/seed.py` or directly in the database. A manager still corrects an attendance day with `POST /attendance` (it updates the existing row).
 
 ### Daycares and rooms
 | Method | Path | Role | Notes |
@@ -141,11 +139,9 @@ No DELETE anywhere: the DB user cannot delete.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/time-records/status` | Any | `{inside, openRecord, todayShifts, location}` |
-| GET | `/time-records` | Any | employee: own; manager: daycare; director: all. `?startDate,endDate,userId,withinZone,daycareId` |
 | POST | `/time-records/clock-in` | E/M | `{uuid?, occurredAt?, latitude?, longitude?, withinZone?(deprecated, ignored), roomId?, shiftId?}`; the server computes `withinZone` from the coordinates (none sent → saved as `false`, flagged for the manager); `occurredAt` max 48 h old → 201 `{record, attendance, repeated:false}`; **same uuid again → 200 `repeated:true`**; `roomId` and `shiftId` together or neither. Also creates the day's attendance (present/late) |
 | POST | `/time-records/clock-out` | E/M | `{occurredAt?}`; same-second exit is saved +1 s (DB needs out > in) |
 | POST | `/time-records/batch` | M | `{userIds, occurredAt?, roomId?, shiftId?}` → 201 `{recorded, skipped}` |
-| PUT | `/time-records/{id}` | M | `{clockInAt?, clockOutAt?}`; `clockOutAt: null` removes it; the before/after is kept by the audit triggers |
 
 ### Attendance
 | Method | Path | Role | Notes |
@@ -154,7 +150,6 @@ No DELETE anywhere: the DB user cannot delete.
 | GET | `/attendance` | M/D | list of the same shape per person |
 | GET | `/attendance/{userId}` | M/D | one person |
 | POST | `/attendance` | M | `{userId, date, status: present\|late\|absent\|incident, absenceReasonId? \| absenceReason?}` → 201, or 200 if it corrected the day. `absent`/`incident` **require a reason** (400 with `options`) |
-| PUT | `/attendance/{id}` | M | partial, same reason rule |
 
 Day statuses in reports: `present, late, absent, incident` (stored) plus computed `no_record, pending, day_off, outside_schedule, scheduled`. Absences = `absent` + `no_record`.
 

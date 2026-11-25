@@ -170,26 +170,3 @@ def clock_out(db: Session, user: User, when: datetime) -> TimeRecord:
     record.clock_out_at = out
     db.commit()
     return record
-
-
-@dataclass
-class ProposedTimes:
-    previous_clock_in: datetime
-    previous_clock_out: datetime | None
-    proposed_clock_in: datetime
-    proposed_clock_out: datetime | None
-
-
-def propose_times(record: TimeRecord, clock_in_at: datetime | None, clock_out_at: datetime | None, clock_out_sent: bool) -> ProposedTimes:
-    """The before/after times of a manager fix.
-
-    clock_in_at None means "leave it". For the clock-out, clock_out_sent tells "not sent"
-    (leave it) from an explicit null (remove it).
-    """
-    if clock_in_at is None and not clock_out_sent:
-        raise ApiError(400, "Send clockInAt or clockOutAt")
-    new_in = clock_in_at or record.clock_in_at
-    new_out = clock_out_at if clock_out_sent else record.clock_out_at
-    if new_out is not None and seconds(new_out) <= seconds(new_in):
-        raise ApiError(400, "The clock-out must be after the clock-in")
-    return ProposedTimes(record.clock_in_at, record.clock_out_at, new_in, new_out)

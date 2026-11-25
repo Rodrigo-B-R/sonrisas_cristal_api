@@ -32,7 +32,7 @@ def test_validation_errors_have_one_format_and_do_not_echo_the_input(client, log
 
 def test_invalid_json_and_invalid_ids(client, login):
     headers = {**login("director"), "Content-Type": "application/json"}
-    broken = client.post("/catalogs/positions", headers=headers, content="{not json")
+    broken = client.post("/rooms", headers={**login("manager_a"), "Content-Type": "application/json"}, content="{not json")
     assert broken.status_code == 400 and broken.json()["details"][0]["message"] == "The body is not valid JSON"
     bad_id = client.get("/staff/abc", headers=headers)
     assert bad_id.status_code == 400 and bad_id.json()["details"][0]["in"] == "path"
