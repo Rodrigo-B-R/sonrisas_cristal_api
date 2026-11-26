@@ -80,6 +80,9 @@ def test_security_headers_and_request_id(client):
     assert response.json() == {"message": "Sonrisas de Cristal API is running"}
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Content-Security-Policy"] == "default-src 'none'; frame-ancestors 'none'"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
     assert len(response.headers["X-Request-ID"]) == 12
 
 

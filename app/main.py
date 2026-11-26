@@ -63,6 +63,8 @@ async def request_context(request: Request, call_next):
         response = await call_next(request)
         status = response.status_code
         response.headers.update(common_headers(request.state.request_id))
+        if request.url.path in ("/docs", "/redoc"):  # development only: Swagger/ReDoc load scripts from a CDN
+            del response.headers["Content-Security-Policy"]
         return response
     finally:
         elapsed = time.perf_counter() - started

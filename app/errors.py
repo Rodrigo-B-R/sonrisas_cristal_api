@@ -26,7 +26,14 @@ class ApiError(Exception):
 def common_headers(request_id: str | None = None) -> dict[str, str]:
     """Headers every response carries, including the ones for unhandled errors
     (those are built outside the middleware, so the middleware cannot add them)."""
-    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"}
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+        # A JSON API never loads anything or gets embedded in a page
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+    }
     if request_id:
         headers["X-Request-ID"] = request_id
     if settings.is_production:
